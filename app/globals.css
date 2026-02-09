@@ -1,0 +1,166 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Azure accent (pills must always use this) */
+  --azure-50: #eff6ff;
+  --azure-100: #dbeafe;
+  --azure-200: #bfdbfe;
+  --azure-600: #2563eb;
+  --azure-700: #1d4ed8;
+
+  /* Neutral */
+  --ink: #0f172a;
+  --muted: #475569;
+  --border: rgba(15, 23, 42, 0.12);
+
+  /* Lane gradients: ONLY for big lane header boxes */
+  --lane-inbox-from: #dbeafe; /* blue-100 */
+  --lane-inbox-to: #bfdbfe; /* blue-200 */
+
+  --lane-verified-from: #dcfce7; /* green-100 */
+  --lane-verified-to: #bbf7d0; /* green-200 */
+
+  --lane-client-sent-from: #f3e8ff; /* purple-100 */
+  --lane-client-sent-to: #e9d5ff; /* purple-200 */
+
+  --lane-watchlist-from: #fef9c3; /* yellow-100 */
+  --lane-watchlist-to: #fde68a; /* amber-200 */
+
+  --lane-rejected-from: #fee2e2; /* red-100 */
+  --lane-rejected-to: #fecaca; /* red-200 */
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    color: var(--ink);
+    background: #f8fafc;
+  }
+}
+
+@layer components {
+  /* LANE HEADER (semantic gradients) — ONLY big header boxes */
+  .laneHeader,
+  [data-ui="lane-header"] {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px 18px;
+    background: linear-gradient(135deg, var(--lane-inbox-from), var(--lane-inbox-to));
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+  }
+
+  .laneHeader[data-lane="INBOX"],
+  [data-ui="lane-header"][data-lane="INBOX"] {
+    background: linear-gradient(135deg, var(--lane-inbox-from), var(--lane-inbox-to));
+  }
+
+  .laneHeader[data-lane="VERIFIED"],
+  [data-ui="lane-header"][data-lane="VERIFIED"] {
+    background: linear-gradient(135deg, var(--lane-verified-from), var(--lane-verified-to));
+  }
+
+  .laneHeader[data-lane="CLIENT-SENT"],
+  [data-ui="lane-header"][data-lane="CLIENT-SENT"] {
+    background: linear-gradient(135deg, var(--lane-client-sent-from), var(--lane-client-sent-to));
+  }
+
+  .laneHeader[data-lane="WATCHLIST"],
+  [data-ui="lane-header"][data-lane="WATCHLIST"] {
+    background: linear-gradient(135deg, var(--lane-watchlist-from), var(--lane-watchlist-to));
+  }
+
+  .laneHeader[data-lane="REJECTED"],
+  [data-ui="lane-header"][data-lane="REJECTED"] {
+    background: linear-gradient(135deg, var(--lane-rejected-from), var(--lane-rejected-to));
+  }
+
+  /* LANE PILLS (brand Azure) — NEVER semantic */
+  .lanePill,
+  [data-ui="lane-pill"] {
+    background: var(--azure-50) !important;
+    color: var(--azure-700) !important;
+    border: 1px solid var(--azure-200) !important;
+
+    border-radius: 9999px;
+    padding: 8px 12px;
+    font-weight: 800;
+    line-height: 1;
+    user-select: none;
+    transition: transform 120ms ease, background-color 120ms ease, border-color 120ms ease,
+      color 120ms ease, box-shadow 120ms ease;
+  }
+
+  .lanePill:hover,
+  [data-ui="lane-pill"]:hover {
+    background: var(--azure-100) !important;
+  }
+
+  .lanePill:active,
+  [data-ui="lane-pill"]:active {
+    transform: translateY(1px);
+  }
+
+  .lanePill.isActive,
+  [data-ui="lane-pill"][aria-selected="true"] {
+    background: var(--azure-600) !important;
+    color: white !important;
+    border-color: var(--azure-600) !important;
+    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
+  }
+
+  .lanePill.isActive:hover,
+  [data-ui="lane-pill"][aria-selected="true"]:hover {
+    background: var(--azure-700) !important;
+    border-color: var(--azure-700) !important;
+  }
+
+  .lanePill .pillCount,
+  [data-ui="lane-pill"] .pillCount {
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 900;
+    background: rgba(29, 78, 216, 0.1);
+    color: var(--azure-700);
+  }
+
+  .lanePill.isActive .pillCount,
+  [data-ui="lane-pill"][aria-selected="true"] .pillCount {
+    background: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+  }
+
+  .lanePill:focus-visible,
+  [data-ui="lane-pill"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35);
+  }
+
+  /* STATUS BUTTONS (active only) */
+  button[data-status="not_interested"][aria-pressed="true"] {
+    background: #dc2626 !important;
+    color: #ffffff !important;
+  }
+
+  button[data-status="interviewing"][aria-pressed="true"] {
+    background: #16a34a !important;
+    color: #ffffff !important;
+  }
+
+  button[data-status="applied"][aria-pressed="true"] {
+    background: #1e40af !important;
+    color: #ffffff !important;
+  }
+
+  button[data-status="in_progress"][aria-pressed="true"] {
+    background: #2563eb !important;
+    color: #ffffff !important;
+  }
+}

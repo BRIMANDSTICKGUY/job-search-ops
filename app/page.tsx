@@ -1,0 +1,1070 @@
+"use client";
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { supabase } from "@/lib/supabase/client";
+import type { AppState, Client, Job, LaneId, Mode, UpperLaneId } from "./types";
+import { STORAGE_KEY, normalizeLane, toLowerLane, toUpperLane } from "./types";
+
+/**
+ * Job Search Ops — MVP Coach Portal
+ * - LocalStorage persistence (single key)
+ * - Lanes: INBOX / VERIFIED / CLIENT-SENT / WATCHLIST / REJECTED (UI)
+ * - Canonical lanes in state/storage: inbox | verified | clientSent | watchlist | rejected
+ * - Add job, assign clients (multi-assign), notes
+ * - Bulk move + bulk assign (ADD only; never overwrites)
+ * - Client Link panel (copy + open) with "Copied ✓" feedback
+ * - Safety: Export/Import state so you can recover instantly
+ */
+
+const UPPER_LANES: UpperLaneId[] = ["INBOX", "VERIFIED", "CLIENT-SENT", "WATCHLIST", "REJECTED"];
+
+function now() {
+  return Date.now();
+}
+
+function uid(prefix = "id") {
+  return `${prefix}_${Math.random().toString(16).slice(2)}_${Math.random().toString(16).slice(2)}`;
+}
+
+function safeParse<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function makeEmptyState(): AppState {
+  return {
+    version: 1,
+    mode: "coach",
+    clients: [
+      { id: "c_twanna", name: "twanna", email: "" },
+      { id: "c_diane", name: "Diane", email: "" },
+    ],
+    jobs: [],
+    activeLane: "inbox",
+    selectedJobIds: [],
+    selectedClientId: undefined,
+  };
+}
+
+function buildClientLink(origin: string, clientId: string) {
+  return `${origin}/client?clientId=${encodeURIComponent(clientId)}`;
+}
+
+function downloadText(filename: string, text: string) {
+  const blob = new Blob([text], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function sanitizeClients(input: any): Client[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .filter((c) => c && typeof c.id === "string")
+    .map((c) => ({
+      id: c.id,
+      name: typeof c.name === "string" ? c.name : "",
+      email: typeof c.email === "string" ? c.email : "",
+    }));
+}
+
+function sanitizeJobs(input: any): Job[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .filter((j) => j && typeof j.id === "string")
+    .map((j) => {
+      const createdAt = typeof j.createdAt === "number" ? j.createdAt : now();
+      const movedAt = typeof j.movedAt === "number" ? j.movedAt : createdAt;
+
+      const assignedClientIds: string[] = Array.isArray(j.assignedClientIds)
+        ? j.assignedClientIds.filter((x: any) => typeof x === "string")
+        : [];
+
+      return {
+        id: j.id,
+        title: typeof j.title === "string" ? j.title : "",
+        company: typeof j.company === "string" ? j.company : "",
+        link: typeof j.link === "string" ? j.link : "",
+        location: typeof j.location === "string" ? j.location : "",
+        salary: typeof j.salary === "string" ? j.salary : "",
+        lane: normalizeLane(j.lane), // ✅ safety net: normalize on load
+        assignedClientIds,
+        clientNotes: typeof j.clientNotes === "string" ? j.clientNotes : "",
+        internalNotes: typeof j.internalNotes === "string" ? j.internalNotes : "",
+        createdAt,
+        movedAt,
+        outcome_status:
+          j.outcome_status === "interview" ||
+          j.outcome_status === "no_response" ||
+          j.outcome_status === "rejected" ||
+          j.outcome_status === "offer"
+            ? j.outcome_status
+            : null,
+        last_response_at: typeof j.last_response_at === "string" ? j.last_response_at : null,
+      } satisfies Job;
+    });
+}
+
+export default function Page() {
+  // hydration-safe origin (client only)
+  const [origin, setOrigin] = useState<string>("");
+
+  // app state
+  const [state, setState] = useState<AppState>(() => makeEmptyState());
+  const [hydrated, setHydrated] = useState(false);
+
+  // UI states
+  const [search, setSearch] = useState("");
+  const [sortMode, setSortMode] = useState<"movedNewest" | "createdNewest">("movedNewest");
+
+  // Add job fields
+  const [newTitle, setNewTitle] = useState("");
+  const [newCompany, setNewCompany] = useState("");
+  const [newLink, setNewLink] = useState("");
+  const [newIngestText, setNewIngestText] = useState("");
+
+  // Bulk controls
+  const [bulkMoveTarget, setBulkMoveTarget] = useState<UpperLaneId>("VERIFIED");
+  const [bulkAssignClientId, setBulkAssignClientId] = useState<string>("");
+
+  // Client link panel feedback
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
+
+  // Import input ref
+  const importRef = useRef<HTMLInputElement | null>(null);
+
+  // --- first hydration: load LS + origin ---
+  useEffect(() => {
+    setOrigin(window.location.origin);
+
+    const loaded = safeParse<AppState>(window.localStorage.getItem(STORAGE_KEY));
+    if (loaded && typeof loaded === "object") {
+      const normalized: AppState = {
+        version: typeof (loaded as any).version === "number" ? (loaded as any).version : 1,
+        mode: (loaded as any).mode === "client" ? "client" : "coach",
+        clients: sanitizeClients((loaded as any).clients),
+        jobs: sanitizeJobs((loaded as any).jobs),
+        activeLane: normalizeLane((loaded as any).activeLane),
+        selectedJobIds: Array.isArray((loaded as any).selectedJobIds) ? (loaded as any).selectedJobIds : [],
+        selectedClientId: (loaded as any).selectedClientId ?? undefined,
+      };
+
+      setState(normalized);
+    } else {
+      setState(makeEmptyState());
+    }
+
+    setHydrated(true);
+
+    return () => {
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
+  // --- persist to LS after hydration ---
+  useEffect(() => {
+    if (!hydrated) return;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }, [hydrated, state]);
+
+  // --- derived: selected client ---
+  const selectedClient = useMemo(() => {
+    if (!state.selectedClientId) return null;
+    return state.clients.find((c) => c.id === state.selectedClientId) ?? null;
+  }, [state.clients, state.selectedClientId]);
+
+  // --- derived: counts by lane (UI lanes) ---
+  const counts = useMemo(() => {
+    const c: Record<UpperLaneId, number> = {
+      INBOX: 0,
+      VERIFIED: 0,
+      "CLIENT-SENT": 0,
+      WATCHLIST: 0,
+      REJECTED: 0,
+    };
+
+    const filterClientId = state.mode === "client" ? state.selectedClientId : null;
+
+    for (const job of state.jobs) {
+      if (filterClientId && !job.assignedClientIds.includes(filterClientId)) continue;
+      c[toUpperLane(job.lane)]++;
+    }
+
+    return c;
+  }, [state.jobs, state.mode, state.selectedClientId]);
+
+  // --- filtering + sorting + active lane list ---
+  const visibleJobs = useMemo(() => {
+    const activeUpper = toUpperLane(state.activeLane);
+    const filterClientId = state.mode === "client" ? state.selectedClientId : null;
+
+    let jobs = state.jobs.filter((j) => toUpperLane(j.lane) === activeUpper);
+
+    if (filterClientId) {
+      jobs = jobs.filter((j) => j.assignedClientIds.includes(filterClientId));
+    }
+
+    const q = search.trim().toLowerCase();
+    if (q) {
+      jobs = jobs.filter((j) => {
+        const hay = `${j.title} ${j.company} ${j.link ?? ""} ${j.location ?? ""} ${j.salary ?? ""}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
+
+    jobs.sort((a, b) => {
+      if (sortMode === "movedNewest") return (b.movedAt ?? 0) - (a.movedAt ?? 0);
+      return (b.createdAt ?? 0) - (a.createdAt ?? 0);
+    });
+
+    return jobs;
+  }, [state.jobs, state.activeLane, state.mode, state.selectedClientId, search, sortMode]);
+
+  // --- helpers ---
+  function setMode(mode: Mode) {
+    setState((s) => ({
+      ...s,
+      mode,
+      selectedJobIds: [],
+      selectedClientId:
+        mode === "client"
+          ? s.selectedClientId ?? (s.clients[0]?.id ? s.clients[0].id : undefined)
+          : s.selectedClientId,
+    }));
+  }
+
+  // UI click passes UpperLaneId; state stores LaneId
+  function setActiveUpperLane(lane: UpperLaneId) {
+    setState((s) => ({ ...s, activeLane: toLowerLane(lane), selectedJobIds: [] }));
+  }
+
+  function toggleSelected(jobId: string, checked: boolean) {
+    setState((s) => {
+      const set = new Set(s.selectedJobIds);
+      if (checked) set.add(jobId);
+      else set.delete(jobId);
+      return { ...s, selectedJobIds: Array.from(set) };
+    });
+  }
+
+  function selectAllVisible() {
+    setState((s) => {
+      const ids = visibleJobs.map((j) => j.id);
+      return { ...s, selectedJobIds: ids };
+    });
+  }
+
+  function clearSelection() {
+    setState((s) => ({ ...s, selectedJobIds: [] }));
+  }
+
+  function addJob() {
+    const title = newTitle.trim();
+    const company = newCompany.trim();
+    const link = newLink.trim();
+
+    if (!title || !company) return;
+
+    const job: Job = {
+      id: uid("job"),
+      title,
+      company,
+      link,
+      location: "",
+      salary: "",
+      lane: "inbox",
+      assignedClientIds: [],
+      clientNotes: "",
+      internalNotes: "",
+      createdAt: now(),
+      movedAt: now(),
+    };
+
+    setState((s) => ({
+      ...s,
+      jobs: [job, ...s.jobs],
+      activeLane: "inbox",
+    }));
+
+    setNewTitle("");
+    setNewCompany("");
+    setNewLink("");
+  }
+
+  async function addIngestedJob() {
+    const title = newTitle.trim();
+    const company = newCompany.trim();
+    const link = newLink.trim();
+    const rawPayload = newIngestText.trim();
+
+    if (!title || !company) return;
+
+    const { data: jobData, error: jobErr } = await supabase
+      .from("jobs")
+      .insert({
+        title,
+        company,
+        link: link || null,
+        lane: "INBOX",
+      })
+      .select("id")
+      .single();
+
+    if (jobErr || !jobData) return;
+
+    const sourceIdentifier =
+      link || (rawPayload ? rawPayload.slice(0, 140) : "manual");
+
+    const { error: ingestErr } = await supabase
+      .from("job_ingestion_events")
+      .insert({
+        job_id: jobData.id,
+        source_type: "manual",
+        source_identifier: sourceIdentifier,
+        raw_payload: rawPayload || null,
+      });
+
+    if (ingestErr) return;
+
+    const job: Job = {
+      id: jobData.id,
+      title,
+      company,
+      link,
+      location: "",
+      salary: "",
+      lane: "inbox",
+      assignedClientIds: [],
+      clientNotes: "",
+      internalNotes: "",
+      createdAt: now(),
+      movedAt: now(),
+    };
+
+    setState((s) => ({
+      ...s,
+      jobs: [job, ...s.jobs],
+      activeLane: "inbox",
+    }));
+
+    setNewTitle("");
+    setNewCompany("");
+    setNewLink("");
+    setNewIngestText("");
+  }
+
+  function moveJob(jobId: string, lane: UpperLaneId) {
+    setState((s) => ({
+      ...s,
+      jobs: s.jobs.map((j) => {
+        if (j.id !== jobId) return j;
+        return { ...j, lane: toLowerLane(lane), movedAt: now() };
+      }),
+    }));
+  }
+
+  function bulkMoveSelected() {
+    const target = bulkMoveTarget;
+    setState((s) => {
+      const selected = new Set(s.selectedJobIds);
+      if (selected.size === 0) return s;
+      return {
+        ...s,
+        jobs: s.jobs.map((j) => {
+          if (!selected.has(j.id)) return j;
+          return { ...j, lane: toLowerLane(target), movedAt: now() };
+        }),
+        selectedJobIds: [],
+      };
+    });
+  }
+
+  function addClient(nameRaw?: string) {
+    const name = (nameRaw ?? "").trim();
+    if (!name) return;
+    const client: Client = { id: uid("c"), name, email: "" };
+    setState((s) => ({
+      ...s,
+      clients: [...s.clients, client],
+      selectedClientId: s.selectedClientId ?? client.id,
+    }));
+  }
+
+  function addClientToJob(jobId: string, clientId: string) {
+    if (!clientId) return;
+
+    setState((s) => ({
+      ...s,
+      jobs: s.jobs.map((j) => {
+        if (j.id !== jobId) return j;
+        if (j.assignedClientIds.includes(clientId)) return j;
+        return { ...j, assignedClientIds: [...j.assignedClientIds, clientId] };
+      }),
+    }));
+  }
+
+  function removeClientFromJob(jobId: string, clientId: string) {
+    setState((s) => ({
+      ...s,
+      jobs: s.jobs.map((j) => {
+        if (j.id !== jobId) return j;
+        return { ...j, assignedClientIds: j.assignedClientIds.filter((id) => id !== clientId) };
+      }),
+    }));
+  }
+
+  function bulkAssignSelected() {
+    const clientId = bulkAssignClientId;
+    if (!clientId) return;
+
+    setState((s) => {
+      const selected = new Set(s.selectedJobIds);
+      if (selected.size === 0) return s;
+
+      return {
+        ...s,
+        jobs: s.jobs.map((j) => {
+          if (!selected.has(j.id)) return j;
+          if (j.assignedClientIds.includes(clientId)) return j;
+          return { ...j, assignedClientIds: [...j.assignedClientIds, clientId] };
+        }),
+        selectedJobIds: [],
+      };
+    });
+  }
+
+  function setNotes(jobId: string, field: "clientNotes" | "internalNotes", value: string) {
+    setState((s) => ({
+      ...s,
+      jobs: s.jobs.map((j) => (j.id === jobId ? { ...j, [field]: value } : j)),
+    }));
+  }
+
+  function setOutcome(jobId: string, outcome_status: Job["outcome_status"]) {
+    setState((s) => ({
+      ...s,
+      jobs: s.jobs.map((j) =>
+        j.id === jobId
+          ? { ...j, outcome_status, last_response_at: new Date().toISOString() }
+          : j
+      ),
+    }));
+  }
+
+  function clearData() {
+    setState(makeEmptyState());
+  }
+
+  function loadDemo() {
+    const t = now();
+    const twannaId = state.clients.find((c) => c.name.toLowerCase() === "twanna")?.id ?? "c_twanna";
+    const dianeId = state.clients.find((c) => c.name.toLowerCase() === "diane")?.id ?? "c_diane";
+
+    const demoJobs: Job[] = [
+      {
+        id: uid("job"),
+        title: "Loan Processor (Remote)",
+        company: "Prosperity Home Mortgage",
+        link: "https://example.com/job-processor",
+        location: "Remote",
+        salary: "$45,400–$62,400",
+        lane: "inbox",
+        assignedClientIds: [twannaId],
+        clientNotes: "Review the JD. If you want this, reply YES and I’ll tailor your resume bullets to match.",
+        internalNotes: "Strong match for Twanna: processing workflow + docs + conditions.",
+        createdAt: t - 1000 * 60 * 10,
+        movedAt: t - 1000 * 60 * 10,
+      },
+      {
+        id: uid("job"),
+        title: "Program Manager, Operations (Remote)",
+        company: "Jobgether (Partner Company)",
+        link: "https://example.com/job-program-ops",
+        location: "Remote",
+        salary: "",
+        lane: "inbox",
+        assignedClientIds: [twannaId, dianeId],
+        clientNotes: "This one’s competitive. If you want it, reply YES and I’ll optimize your resume + LinkedIn headline for it.",
+        internalNotes: "Use as multi-assign test job. Verify pay + remote policy.",
+        createdAt: t - 1000 * 60 * 8,
+        movedAt: t - 1000 * 60 * 8,
+      },
+      {
+        id: uid("job"),
+        title: "Scrum Master (Remote)",
+        company: "Acme Health Systems",
+        link: "https://example.com/job-scrum",
+        location: "Remote",
+        salary: "",
+        lane: "inbox",
+        assignedClientIds: [dianeId],
+        clientNotes: "If you want this role, reply YES and tell me your last 2 projects so I can write your STAR stories.",
+        internalNotes: "Watch certs + tooling keywords. Prep 2 wins + 1 conflict story.",
+        createdAt: t - 1000 * 60 * 6,
+        movedAt: t - 1000 * 60 * 6,
+      },
+    ];
+
+    setState((s) => ({
+      ...s,
+      jobs: demoJobs,
+      activeLane: "inbox",
+      selectedJobIds: [],
+    }));
+  }
+
+  // --- backup: export/import ---
+  function exportBackup() {
+    const payload = JSON.stringify(state, null, 2);
+    downloadText(`job-search-ops-backup-${new Date().toISOString().slice(0, 10)}.json`, payload);
+  }
+
+  function triggerImport() {
+    importRef.current?.click();
+  }
+
+  async function handleImportFile(file: File | null) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as AppState;
+      if (!parsed || typeof parsed !== "object") return;
+
+      // ensure safety on import
+      const normalized: AppState = {
+        version: typeof (parsed as any).version === "number" ? (parsed as any).version : 1,
+        mode: (parsed as any).mode === "client" ? "client" : "coach",
+        clients: sanitizeClients((parsed as any).clients),
+        jobs: sanitizeJobs((parsed as any).jobs),
+        activeLane: normalizeLane((parsed as any).activeLane),
+        selectedJobIds: Array.isArray((parsed as any).selectedJobIds) ? (parsed as any).selectedJobIds : [],
+        selectedClientId: (parsed as any).selectedClientId ?? undefined,
+      };
+
+      setState(normalized);
+    } catch {
+      // ignore
+    } finally {
+      if (importRef.current) importRef.current.value = "";
+    }
+  }
+
+  // --- client link panel ---
+  const clientLinkValue = useMemo(() => {
+    if (!origin) return "";
+    if (!state.selectedClientId) return "";
+    return buildClientLink(origin, state.selectedClientId);
+  }, [origin, state.selectedClientId]);
+
+  async function copyClientLink() {
+    if (!clientLinkValue) return;
+
+    try {
+      await navigator.clipboard.writeText(clientLinkValue);
+      setCopied(true);
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = clientLinkValue;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        setCopied(true);
+        if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = window.setTimeout(() => setCopied(false), 2000);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  function openClientLink() {
+    if (!clientLinkValue) return;
+    window.open(clientLinkValue, "_blank", "noopener,noreferrer");
+  }
+
+  // --- rendering helpers ---
+  const activeUpper = toUpperLane(state.activeLane);
+  const selectedCount = state.selectedJobIds.length;
+
+  const canGenerateClientLink =
+    state.mode === "coach" && !!state.selectedClientId && state.selectedClientId !== "" && state.selectedClientId !== "ALL";
+
+  return (
+    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", padding: 12, maxWidth: 1200 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontWeight: 800 }}>Job Search Ops</div>
+          <div style={{ fontSize: 12, opacity: 0.8 }}>MVP v1 + Speed/Portal</div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={loadDemo}>Load demo</button>
+          <button onClick={clearData}>Clear data</button>
+
+          <button onClick={exportBackup} title="Download a JSON backup of your current state">
+            Export backup
+          </button>
+
+          <button onClick={triggerImport} title="Import a previously exported backup JSON (overwrites current state)">
+            Import backup
+          </button>
+
+          <input
+            ref={importRef}
+            type="file"
+            accept="application/json"
+            style={{ display: "none" }}
+            onChange={(e) => handleImportFile(e.target.files?.[0] ?? null)}
+          />
+
+          <select value={state.mode} onChange={(e) => setMode(e.target.value as Mode)} title="Mode">
+            <option value="coach">Coach (Operator)</option>
+            <option value="client">Client (preview)</option>
+          </select>
+
+          <select
+            value={state.selectedClientId ?? ""}
+            onChange={(e) => setState((s) => ({ ...s, selectedClientId: e.target.value || undefined }))}
+            title="Client"
+          >
+            <option value="">All clients</option>
+            {state.clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+
+          <AddClientInline onAdd={addClient} />
+        </div>
+      </div>
+
+      <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search title/company/link/location/salary…"
+          style={{ flex: "1 1 320px", padding: "6px 8px" }}
+        />
+
+        <select value={sortMode} onChange={(e) => setSortMode(e.target.value as any)} title="Sort">
+          <option value="movedNewest">Sort: moved newest</option>
+          <option value="createdNewest">Sort: created newest</option>
+        </select>
+      </div>
+
+      {/* Coach-only Client Link panel */}
+      {state.mode === "coach" && (
+        <div style={{ marginTop: 10, border: "1px solid #bbb", padding: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontWeight: 700 }}>Client Link</div>
+
+            <button onClick={copyClientLink} disabled={!canGenerateClientLink || copied} style={{ opacity: !canGenerateClientLink ? 0.5 : 1 }}>
+              {copied ? "Copied ✓" : "Copy client link"}
+            </button>
+
+            <button onClick={openClientLink} disabled={!canGenerateClientLink} style={{ opacity: !canGenerateClientLink ? 0.5 : 1 }}>
+              Open
+            </button>
+
+            <input
+              readOnly
+              value={canGenerateClientLink ? clientLinkValue : "Select a client (not 'All clients') to generate a link…"}
+              style={{ flex: "1 1 520px", padding: "6px 8px" }}
+            />
+          </div>
+
+          <div style={{ fontSize: 12, marginTop: 6, opacity: 0.85 }}>
+            Tip: Select a client from the dropdown, then copy this link and send it. Client sees only assigned jobs + client notes.
+          </div>
+        </div>
+      )}
+
+      {/* Lane Tabs (UI uppercase) */}
+      <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {UPPER_LANES.map((lane) => {
+          const active = activeUpper === lane;
+          return (
+            <button
+              key={lane}
+              onClick={() => setActiveUpperLane(lane)}
+              style={{
+                border: "1px solid #99b",
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: active ? "#d7ecff" : "#f4f7ff",
+                fontWeight: active ? 800 : 600,
+              }}
+            >
+              {lane} <span style={{ opacity: 0.7 }}>{counts[lane]}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Main lane header */}
+      <div style={{ marginTop: 10, background: "#d7ecff", border: "1px solid #99b", padding: 10, borderRadius: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontWeight: 800 }}>{activeUpper}</div>
+            <div style={{ fontSize: 12, opacity: 0.85 }}>
+              {state.mode === "coach"
+                ? "Triage fast: assign, notes, bulk move."
+                : `Client: ${selectedClient?.name ?? "(missing)"} — shows assigned jobs + notes.`}
+            </div>
+          </div>
+
+          {state.mode === "coach" && (
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Job title" style={{ padding: "6px 8px" }} />
+              <input value={newCompany} onChange={(e) => setNewCompany(e.target.value)} placeholder="Company" style={{ padding: "6px 8px" }} />
+              <input value={newLink} onChange={(e) => setNewLink(e.target.value)} placeholder="Link (optional)" style={{ padding: "6px 8px" }} />
+              <button onClick={addJob}>Add Job</button>
+              <button onClick={addIngestedJob}>Add Job (Unverified)</button>
+              <textarea
+                value={newIngestText}
+                onChange={(e) => setNewIngestText(e.target.value)}
+                placeholder="Paste email or job description (optional)"
+                rows={2}
+                style={{ padding: "6px 8px", minWidth: 280 }}
+              />
+            </div>
+          )}
+        </div>
+
+        {state.mode === "coach" && (
+          <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button onClick={selectAllVisible}>Select all in lane</button>
+            <button onClick={clearSelection}>Clear selection</button>
+            <div style={{ fontSize: 12, opacity: 0.9 }}>Selected: {selectedCount}</div>
+
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <label style={{ fontSize: 12, opacity: 0.85 }}>Move →</label>
+              <select value={bulkMoveTarget} onChange={(e) => setBulkMoveTarget(e.target.value as UpperLaneId)}>
+                {UPPER_LANES.filter((l) => l !== activeUpper).map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+              <button onClick={bulkMoveSelected} disabled={selectedCount === 0}>
+                Bulk Move
+              </button>
+            </div>
+
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <label style={{ fontSize: 12, opacity: 0.85 }}>Bulk assign: add client…</label>
+              <select value={bulkAssignClientId} onChange={(e) => setBulkAssignClientId(e.target.value)}>
+                <option value="">Assign to client…</option>
+                {state.clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <button onClick={bulkAssignSelected} disabled={selectedCount === 0 || !bulkAssignClientId} title="Adds this client to selected jobs (does not overwrite)">
+                Bulk Assign (Add)
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        {visibleJobs.length === 0 ? (
+          <div style={{ padding: 20, opacity: 0.75, textAlign: "center", border: "1px dashed #aaa" }}>No jobs in this lane.</div>
+        ) : (
+          visibleJobs.map((job) => (
+            <JobCard
+              key={job.id}
+              mode={state.mode}
+              job={job}
+              clients={state.clients}
+              selected={state.selectedJobIds.includes(job.id)}
+              onToggleSelected={(checked) => toggleSelected(job.id, checked)}
+              onMove={(lane) => moveJob(job.id, lane)}
+              onAssignClient={(clientId) => addClientToJob(job.id, clientId)}
+              onRemoveClient={(clientId) => removeClientFromJob(job.id, clientId)}
+              onChangeClientNotes={(v) => setNotes(job.id, "clientNotes", v)}
+              onChangeInternalNotes={(v) => setNotes(job.id, "internalNotes", v)}
+              onSetOutcome={(v) => setOutcome(job.id, v)}
+            />
+          ))
+        )}
+      </div>
+
+      <div style={{ marginTop: 18, fontSize: 12, opacity: 0.75 }}>
+        Local storage key: <code>{STORAGE_KEY}</code>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------
+   Components
+----------------------------*/
+
+function AddClientInline({ onAdd }: { onAdd: (name: string) => void }) {
+  const [name, setName] = useState("");
+
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Add client…" style={{ padding: "6px 8px" }} />
+      <button
+        onClick={() => {
+          const n = name.trim();
+          if (!n) return;
+          onAdd(n);
+          setName("");
+        }}
+      >
+        Add
+      </button>
+    </div>
+  );
+}
+
+function JobCard(props: {
+  mode: Mode;
+  job: Job;
+  clients: Client[];
+  selected: boolean;
+
+  onToggleSelected: (checked: boolean) => void;
+  onMove: (lane: UpperLaneId) => void;
+
+  onAssignClient: (clientId: string) => void;
+  onRemoveClient: (clientId: string) => void;
+
+  onChangeClientNotes: (value: string) => void;
+  onChangeInternalNotes: (value: string) => void;
+  onSetOutcome: (value: Job["outcome_status"]) => void;
+}) {
+  const { mode, job, clients, selected } = props;
+
+  const assignedClients = useMemo(() => {
+    const map = new Map(clients.map((c) => [c.id, c]));
+    return job.assignedClientIds.map((id) => map.get(id)).filter(Boolean) as Client[];
+  }, [clients, job.assignedClientIds]);
+
+  const [assignPick, setAssignPick] = useState<string>("");
+  const [sendPick, setSendPick] = useState<string>("");
+
+  useEffect(() => {
+    setAssignPick("");
+    setSendPick("");
+  }, [job.id]);
+
+  const upperLane = toUpperLane(job.lane);
+  const showSendToClient = mode === "coach" && upperLane === "VERIFIED" && assignedClients.length === 0;
+  const outcomeLabel =
+    job.outcome_status === "interview"
+      ? "Interview"
+      : job.outcome_status === "no_response"
+      ? "No response"
+      : job.outcome_status === "rejected"
+      ? "Rejected"
+      : job.outcome_status === "offer"
+      ? "Offer"
+      : "—";
+  const lastResponseLabel =
+    job.last_response_at && !Number.isNaN(new Date(job.last_response_at).getTime())
+      ? new Date(job.last_response_at).toLocaleDateString()
+      : "—";
+  const responseTimeLabel =
+    job.createdAt &&
+    job.last_response_at &&
+    !Number.isNaN(new Date(job.last_response_at).getTime())
+      ? `${Math.ceil(
+          (new Date(job.last_response_at).getTime() - job.createdAt) /
+            (1000 * 60 * 60 * 24)
+        )} days`
+      : "—";
+
+  return (
+    <div style={{ border: "1px solid #999", marginTop: 10 }}>
+      <div style={{ padding: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ minWidth: 260 }}>
+            {mode === "coach" && (
+              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input type="checkbox" checked={selected} onChange={(e) => props.onToggleSelected(e.target.checked)} />
+                <div>
+                  <div style={{ fontWeight: 800 }}>{job.title}</div>
+                  <div>{job.company}</div>
+                </div>
+              </label>
+            )}
+
+            {mode === "client" && (
+              <div>
+                <div style={{ fontWeight: 800 }}>{job.title}</div>
+                <div>{job.company}</div>
+              </div>
+            )}
+
+            {job.link ? (
+              <div style={{ marginTop: 4 }}>
+                <a href={job.link} target="_blank" rel="noreferrer">
+                  {job.link}
+                </a>
+              </div>
+            ) : null}
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12, opacity: 0.8 }}>{new Date(job.movedAt).toLocaleString()}</div>
+
+            {mode === "coach" && (
+              <select value={upperLane} onChange={(e) => props.onMove(e.target.value as UpperLaneId)} title="Move">
+                {UPPER_LANES.map((l) => (
+                  <option key={l} value={l}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        </div>
+
+        {mode === "coach" && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Assigned</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {assignedClients.length === 0 ? <span style={{ opacity: 0.7 }}>None</span> : null}
+
+              {assignedClients.map((c) => (
+                <span
+                  key={c.id}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    border: "1px solid #bbb",
+                    borderRadius: 999,
+                    padding: "2px 8px",
+                    background: "#f7f7f7",
+                  }}
+                >
+                  {c.name}
+                  <button
+                    onClick={() => props.onRemoveClient(c.id)}
+                    style={{ border: "none", background: "transparent", cursor: "pointer", fontWeight: 900 }}
+                    title="Remove"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+
+              <select value={assignPick} onChange={(e) => setAssignPick(e.target.value)}>
+                <option value="">Assign client…</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                onClick={() => {
+                  if (!assignPick) return;
+                  props.onAssignClient(assignPick);
+                  setAssignPick("");
+                }}
+                disabled={!assignPick}
+              >
+                Assign
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showSendToClient && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Send to Client</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <select value={sendPick} onChange={(e) => setSendPick(e.target.value)}>
+                <option value="">Select client…</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => {
+                  if (!sendPick) return;
+                  props.onAssignClient(sendPick);
+                  setSendPick("");
+                }}
+                disabled={!sendPick}
+              >
+                Send to Client
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Client Notes (client-safe)</div>
+          <textarea
+            value={job.clientNotes}
+            onChange={(e) => props.onChangeClientNotes(e.target.value)}
+            rows={2}
+            style={{ width: "100%", padding: 8 }}
+            readOnly={mode === "client"}
+          />
+        </div>
+
+        {mode === "coach" && (
+          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
+            <div style={{ marginBottom: 4 }}>Outcome</div>
+            <div>Outcome: {outcomeLabel}</div>
+            <div>Last Response: {lastResponseLabel}</div>
+            <div>Time to Response: {responseTimeLabel}</div>
+          </div>
+        )}
+
+        {mode === "coach" && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Set Outcome</div>
+            <select
+              value={job.outcome_status ?? ""}
+              onChange={(e) =>
+                props.onSetOutcome(
+                  (e.target.value || null) as Job["outcome_status"]
+                )
+              }
+            >
+              <option value="">Select…</option>
+              <option value="interview">Interview</option>
+              <option value="no_response">No response</option>
+              <option value="rejected">Rejected</option>
+              <option value="offer">Offer</option>
+            </select>
+          </div>
+        )}
+
+        {mode === "coach" && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Internal Notes (coach-only)</div>
+            <textarea value={job.internalNotes} onChange={(e) => props.onChangeInternalNotes(e.target.value)} rows={2} style={{ width: "100%", padding: 8 }} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
