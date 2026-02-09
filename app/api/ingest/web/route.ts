@@ -2,11 +2,12 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import type { JobSourceType } from "@/app/types";
 
 type IngestionSource = {
   id: string;
   client_id: string | null;
-  source_type: "greenhouse" | "lever" | "ashby" | "workday";
+  source_type: JobSourceType;
   source_url: string | null;
   active: boolean;
 };
@@ -245,77 +246,10 @@ async function fetchAshby(
   }));
 }
 
-async function fetchWorkday(
-  source: IngestionSource,
-  fetchErrors: FetchError[]
-): Promise<NormalizedJob[]> {
-  const sourceUrl = source.source_url;
-  if (!isValidSourceUrl(sourceUrl)) return [];
-
-  const result = await hardenedFetch(sourceUrl);
-  if (!result.ok) {
-    const message = result.errorMessage;
-    console.error("Fetch failed", {
-      source_type: "workday",
-      source_url: sourceUrl,
-      message,
-    });
-    fetchErrors.push({
-      source_type: "workday",
-      source_url: sourceUrl,
-      message,
-    });
-    return [];
-  }
-
-  if (!result.res.ok) {
-    const message = `Failed to fetch from Workday: ${result.res.status} ${result.res.statusText}`;
-    console.error("Fetch failed", {
-      source_type: "workday",
-      source_url: sourceUrl,
-      message,
-    });
-    fetchErrors.push({
-      source_type: "workday",
-      source_url: sourceUrl,
-      message,
-    });
-    return [];
-  }
-
-  const data = (await result.res.json()) as any;
-  const company = companyFromSource(source);
-  const postings: any[] = Array.isArray(data?.jobPostings)
-    ? data.jobPostings
-    : Array.isArray(data?.items)
-    ? data.items
-    : [];
-  return postings.map((j) => ({
-    title: j.title ?? j.jobTitle ?? "",
-    company,
-    location: j.locationsText ?? j.location ?? null,
-    link: j.externalPath
-      ? `${new URL(sourceUrl).origin}${j.externalPath}`
-      : j.url ?? null,
-    source_type: "workday",
-    source_url: sourceUrl,
-    raw_payload: j,
-  }));
-}
-
 async function fetchJobsForSource(
   source: IngestionSource,
   fetchErrors: FetchError[]
 ): Promise<NormalizedJob[]> {
-  if (source.source_type === "workday") {
-    fetchErrors.push({
-      source_type: "workday",
-      source_url: source.source_url,
-      message: "Workday disabled for MVP reliability",
-    });
-    return [];
-  }
-
   switch (source.source_type) {
     case "greenhouse":
       return fetchGreenhouse(source, fetchErrors);
@@ -323,8 +257,6 @@ async function fetchJobsForSource(
       return fetchLever(source, fetchErrors);
     case "ashby":
       return fetchAshby(source, fetchErrors);
-    case "workday":
-      return fetchWorkday(source, fetchErrors);
     default:
       return [];
   }
