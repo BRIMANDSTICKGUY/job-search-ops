@@ -1,6 +1,7 @@
 "use server";
 
 import { getCoachSupabase } from "@/lib/supabase/coach";
+import { revalidatePath } from "next/cache";
 
 export async function updateJobLane(jobId: string, lane: string) {
   const supabase = getCoachSupabase();
@@ -13,4 +14,6 @@ export async function updateJobLane(jobId: string, lane: string) {
   if (error) {
     throw new Error(error.message);
   }
+
+  revalidatePath("/coach");
 }
