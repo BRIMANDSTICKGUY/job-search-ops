@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabaseBrowser } from "@/lib/supabase/browser";
+import { supabaseBrowser } from "../../lib/supabase/browser";
 
 type Lane = "INBOX" | "VERIFIED" | "CLIENT-SENT" | "WATCHLIST" | "REJECTED";
 type ClientStatus =

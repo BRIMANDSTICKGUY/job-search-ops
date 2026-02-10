@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { supabaseBrowser } from "@/lib/supabase/browser";
+import { supabaseBrowser } from "../lib/supabase/browser";
 import type { AppState, Client, Job, LaneId, Mode, UpperLaneId } from "./types";
 import { STORAGE_KEY, normalizeLane, toLowerLane, toUpperLane } from "./types";
 
