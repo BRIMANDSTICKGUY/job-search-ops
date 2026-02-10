@@ -6,13 +6,13 @@ import { getSupabaseBrowser } from "../../lib/supabase/browser";
 export default function JobsRealtimeListener() {
   useEffect(() => {
     const channel = getSupabaseBrowser()
-      .channel("job-lane-events")
+      .channel("jobs-updates")
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "UPDATE",
           schema: "public",
-          table: "job_lane_events",
+          table: "jobs",
         },
         () => {
           window.dispatchEvent(new Event("jobs-updated"));
