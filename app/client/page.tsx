@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabaseBrowser } from "../../lib/supabase/browser";
+import { getSupabaseBrowser } from "../../lib/supabase/browser";
 
 type Lane = "INBOX" | "VERIFIED" | "CLIENT-SENT" | "WATCHLIST" | "REJECTED";
 type ClientStatus =
@@ -132,7 +132,7 @@ export default function ClientPage() {
     setError(null);
 
     // 1) Jobs
-    const { data: jobsData, error: jobsErr } = await supabaseBrowser
+    const { data: jobsData, error: jobsErr } = await getSupabaseBrowser()
       .from("jobs")
       .select("id,title,company,link,lane,client_status,created_at,updated_at,moved_at")
       .order("created_at", { ascending: false });
@@ -146,14 +146,14 @@ export default function ClientPage() {
     // 2) Clients (we try name, but if it doesn’t exist, Supabase will error — we handle fallback)
     let clientsData: Client[] = [];
     {
-  const { data, error } = await supabaseBrowser
+  const { data, error } = await getSupabaseBrowser()
         .from("clients")
         .select("id,name,program_start_date,program_end_date")
         .order("id", { ascending: true });
 
       if (error) {
         // Fallback if your clients table doesn’t have "name" yet
-        const { data: data2, error: error2 } = await supabaseBrowser
+        const { data: data2, error: error2 } = await getSupabaseBrowser()
           .from("clients")
           .select("id,program_start_date,program_end_date")
           .order("id", { ascending: true });
@@ -170,7 +170,7 @@ export default function ClientPage() {
     }
 
     // 3) Assignments (this MUST include id)
-    const { data: asnData, error: asnErr } = await supabaseBrowser
+    const { data: asnData, error: asnErr } = await getSupabaseBrowser()
       .from("job_assignments")
       .select("id,job_id,client_id,created_at")
       .order("created_at", { ascending: false });
@@ -182,7 +182,7 @@ export default function ClientPage() {
     }
 
     // 4) Job artifacts (read-only)
-    const { data: artData, error: artErr } = await supabaseBrowser
+    const { data: artData, error: artErr } = await getSupabaseBrowser()
       .from("job_artifacts")
       .select("job_id,artifact_type,file_url");
 
@@ -193,7 +193,7 @@ export default function ClientPage() {
     }
 
     // 5) JD snapshots (read-only)
-    const { data: jdData, error: jdErr } = await supabaseBrowser
+    const { data: jdData, error: jdErr } = await getSupabaseBrowser()
       .from("jd_snapshots")
       .select("id,job_id,content_text,source_url");
 
@@ -240,7 +240,7 @@ export default function ClientPage() {
       )
     );
 
-    const { error } = await supabaseBrowser
+    const { error } = await getSupabaseBrowser()
       .from("jobs")
       .update({ lane, moved_at: new Date().toISOString() })
       .eq("id", jobId);
@@ -264,7 +264,7 @@ export default function ClientPage() {
       prev.map((j) => (j.id === jobId ? { ...j, client_status } : j))
     );
 
-    const { error } = await supabaseBrowser
+    const { error } = await getSupabaseBrowser()
       .from("jobs")
       .update({ client_status, updated_at: new Date().toISOString() })
       .eq("id", jobId);
@@ -298,7 +298,7 @@ export default function ClientPage() {
     };
     setAssignments((prev) => [optimisticRow, ...prev]);
 
-    const { data, error } = await supabaseBrowser
+    const { data, error } = await getSupabaseBrowser()
       .from("job_assignments")
       .insert({ job_id: jobId, client_id: clientId })
       .select("id,job_id,client_id,created_at")
@@ -330,7 +330,7 @@ export default function ClientPage() {
     const snapshot = assignments;
     setAssignments((prev) => prev.filter((a) => a.id !== assignmentId));
 
-    const { error } = await supabaseBrowser
+    const { error } = await getSupabaseBrowser()
       .from("job_assignments")
       .delete()
       .eq("id", assignmentId);
@@ -349,7 +349,7 @@ export default function ClientPage() {
     const timestamp = Date.now();
     const path = `${clientId}/${job.id}/${timestamp}`;
 
-    const { error: uploadErr } = await supabaseBrowser.storage
+    const { error: uploadErr } = await getSupabaseBrowser().storage
       .from("applied-resumes")
       .upload(path, file, { upsert: false });
 
@@ -358,7 +358,7 @@ export default function ClientPage() {
       return;
     }
 
-    const { data: publicUrlData } = supabaseBrowser.storage
+    const { data: publicUrlData } = getSupabaseBrowser().storage
       .from("applied-resumes")
       .getPublicUrl(path);
 
@@ -366,7 +366,7 @@ export default function ClientPage() {
     const dateLabel = new Date().toLocaleDateString();
     const title = job.title ?? "Untitled";
 
-    const { data: resumeData, error: resumeErr } = await supabaseBrowser
+    const { data: resumeData, error: resumeErr } = await getSupabaseBrowser()
       .from("resume_versions")
       .insert({
         client_id: clientId,
@@ -382,7 +382,7 @@ export default function ClientPage() {
       return;
     }
 
-    const { error: artifactErr } = await supabaseBrowser
+    const { error: artifactErr } = await getSupabaseBrowser()
       .from("job_artifacts")
       .insert({
         job_id: job.id,
@@ -796,7 +796,7 @@ export default function ClientPage() {
                           return;
                         }
                         if (!jdText.trim()) return;
-                        const { data, error } = await supabaseBrowser
+                        const { data, error } = await getSupabaseBrowser()
                           .from("jd_snapshots")
                           .insert({
                             job_id: job.id,

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { supabaseBrowser } from "../lib/supabase/browser";
+import { getSupabaseBrowser } from "../lib/supabase/browser";
 import type { AppState, Client, Job, LaneId, Mode, UpperLaneId } from "./types";
 import { STORAGE_KEY, normalizeLane, toLowerLane, toUpperLane } from "./types";
 
@@ -307,7 +307,7 @@ export default function Page() {
 
     if (!title || !company) return;
 
-    const { data: jobData, error: jobErr } = await supabaseBrowser
+    const { data: jobData, error: jobErr } = await getSupabaseBrowser()
       .from("jobs")
       .insert({
         title,
@@ -323,7 +323,7 @@ export default function Page() {
     const sourceIdentifier =
       link || (rawPayload ? rawPayload.slice(0, 140) : "manual");
 
-    const { error: ingestErr } = await supabaseBrowser
+    const { error: ingestErr } = await getSupabaseBrowser()
       .from("job_ingestion_events")
       .insert({
         job_id: jobData.id,
