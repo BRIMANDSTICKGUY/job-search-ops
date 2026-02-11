@@ -12,7 +12,7 @@ export async function updateJobLane(jobId: string, lane: string) {
 
   const { error } = await supabase
     .from("jobs")
-    .update({ lane })
+    .update({ lane } as { lane: string })
     .eq("id", jobId);
 
   if (error) {
