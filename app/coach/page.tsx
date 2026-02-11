@@ -1,6 +1,14 @@
 import { getCoachSupabase } from "@/lib/supabase/coach";
 import { updateJobLane } from "./actions";
 
+type CoachJob = {
+  id: string;
+  title: string;
+  company: string;
+  lane: string;
+  client_status: string | null;
+};
+
 export default async function CoachPage() {
   const supabase = getCoachSupabase();
   if (!supabase) {
@@ -29,13 +37,14 @@ export default async function CoachPage() {
     );
   }
 
+  const typedJobs = (jobs ?? []) as CoachJob[];
   const LANES = ["INBOX", "VERIFIED", "CLIENT-SENT", "WATCHLIST", "REJECTED"];
 
   return (
     <main style={{ padding: "24px" }}>
       <h1>Coach Dashboard</h1>
 
-      {jobs?.map((job) => (
+      {typedJobs.map((job) => (
         <div key={job.id} style={{ marginBottom: 24 }}>
           <h3>
             {job.title} — {job.company}
