@@ -3,6 +3,15 @@ import { updateJobLane } from "./actions";
 
 export default async function CoachPage() {
   const supabase = getCoachSupabase();
+  if (!supabase) {
+    console.error("Coach Supabase client unavailable; check server env.");
+    return (
+      <main style={{ padding: "24px" }}>
+        <h1>Coach dashboard unavailable</h1>
+        <p>Supabase is not configured for this environment.</p>
+      </main>
+    );
+  }
 
   const { data: jobs, error } = await supabase
     .from("jobs")
