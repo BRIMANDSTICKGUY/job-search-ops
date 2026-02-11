@@ -10,9 +10,9 @@ export async function updateJobLane(jobId: string, lane: string) {
     return;
   }
 
-  const { error } = await supabase
+  const { error } = await (supabase as any)
     .from("jobs")
-    .update({ lane } as { lane: string })
+    .update({ lane })
     .eq("id", jobId);
 
   if (error) {
