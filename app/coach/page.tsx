@@ -9,7 +9,15 @@ export default async function CoachPage() {
     .select("id, title, company, lane, client_status");
 
   if (error) {
-    throw new Error(error.message);
+    // Guard exists only to avoid local dev crashes; production should still surface errors in logs/monitoring.
+    console.error("Coach dashboard query failed", error);
+    return (
+      <main style={{ padding: "24px" }}>
+        <h1>Coach dashboard unavailable (local)</h1>
+        <p>{error.message}</p>
+        <p>Check your `.env.local` Supabase credentials.</p>
+      </main>
+    );
   }
 
   const LANES = ["INBOX", "VERIFIED", "CLIENT-SENT", "WATCHLIST", "REJECTED"];

@@ -5,7 +5,9 @@ export function getCoachSupabase() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url || !serviceKey) {
-    throw new Error("Coach Supabase env vars missing");
+    console.warn(
+      "Coach Supabase env vars missing. Ensure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set."
+    );
   }
 
   return createClient(url, serviceKey, {
