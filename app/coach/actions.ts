@@ -5,6 +5,10 @@ import { revalidatePath } from "next/cache";
 
 export async function updateJobLane(jobId: string, lane: string) {
   const supabase = getCoachSupabase();
+  if (!supabase) {
+    console.error("Coach Supabase client unavailable; lane update skipped.");
+    return;
+  }
 
   const { error } = await supabase
     .from("jobs")
