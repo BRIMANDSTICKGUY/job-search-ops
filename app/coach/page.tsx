@@ -99,6 +99,16 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
   const typedClients = (clients ?? []) as CoachClient[];
   const assignedJobIds = new Set(typedJobs.map((job) => job.id));
   const isIntakeJob = (jobId: string) => !assignedJobIds.has(jobId);
+  const existingJobKeys = [
+    ...typedJobs.map((job) => ({
+      title: job.title.trim().toLowerCase(),
+      company: job.company.trim().toLowerCase(),
+    })),
+    ...typedUnassignedJobs.map((job) => ({
+      title: job.title.trim().toLowerCase(),
+      company: job.company.trim().toLowerCase(),
+    })),
+  ];
   const LANES = ["INBOX", "VERIFIED", "CLIENT-SENT", "WATCHLIST", "REJECTED"];
 
   async function submitManualIntake(formData: FormData) {
@@ -165,6 +175,17 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
           <p style={{ color: "#15803d", fontSize: 13, marginBottom: 10 }}>Job added to intake</p>
         ) : null}
         <p
+          id="manual-intake-warning"
+          style={{
+            color: "#b45309",
+            fontSize: 13,
+            marginBottom: 10,
+            display: "none",
+          }}
+        >
+          A job with this title and company already exists.
+        </p>
+        <p
           id="manual-intake-error"
           style={{
             color: "#b91c1c",
@@ -206,8 +227,10 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
                 const linkInput = document.getElementById("manual-intake-link");
                 const submitButton = document.getElementById("manual-intake-submit");
                 const errorEl = document.getElementById("manual-intake-error");
+                const warningEl = document.getElementById("manual-intake-warning");
+                const existingJobKeys = ${JSON.stringify(existingJobKeys)};
 
-                if (!titleInput || !companyInput || !linkInput || !submitButton || !errorEl) return;
+                if (!titleInput || !companyInput || !linkInput || !submitButton || !errorEl || !warningEl) return;
 
                 const setError = (message) => {
                   if (!message) {
@@ -240,6 +263,28 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
 
                   return "";
                 };
+
+                const updateDuplicateWarning = () => {
+                  const normalizedTitle = titleInput.value.trim().toLowerCase();
+                  const normalizedCompany = companyInput.value.trim().toLowerCase();
+
+                  if (!normalizedTitle || !normalizedCompany) {
+                    warningEl.style.display = "none";
+                    return;
+                  }
+
+                  const isDuplicate = existingJobKeys.some(
+                    (job) =>
+                      job.title === normalizedTitle &&
+                      job.company === normalizedCompany
+                  );
+
+                  warningEl.style.display = isDuplicate ? "block" : "none";
+                };
+
+                titleInput.addEventListener("input", updateDuplicateWarning);
+                companyInput.addEventListener("input", updateDuplicateWarning);
+                updateDuplicateWarning();
 
                 form.addEventListener("submit", (event) => {
                   setError("");
