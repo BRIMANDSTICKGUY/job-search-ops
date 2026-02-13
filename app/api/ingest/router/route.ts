@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { ingestJob } from "@/lib/ingest/ingestJob";
+import { startIngestRun, completeIngestRun, failIngestRun } from "@/lib/ingest/ingestRun";
 
 type RouterIngestBody = {
   source?: unknown;
@@ -35,7 +36,6 @@ function isCreatedByRole(value: unknown): value is CreatedByRole {
 
 export async function POST(req: Request) {
   const requestId = crypto.randomUUID();
-  const ingestRunId = crypto.randomUUID();
 
   const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -135,6 +135,9 @@ export async function POST(req: Request) {
     company,
   });
 
+  let ingestRunId: string | null = null;
+  let jobCount = 0;
+
   try {
     const sourceKey = source as keyof typeof SOURCE_LIMITS;
     const sourceLimits = SOURCE_LIMITS[sourceKey];
@@ -199,6 +202,13 @@ export async function POST(req: Request) {
       return errorResponse("Rate limit exceeded (per hour)", 429);
     }
 
+    const ingestRun = await startIngestRun({
+      source,
+      metadata: { request_id: requestId },
+      supabase,
+    });
+    ingestRunId = ingestRun.ingest_run_id;
+
     const result = await ingestJob({
       source,
       title,
@@ -213,6 +223,11 @@ export async function POST(req: Request) {
     });
 
     if (!result.ok && result.reason === "duplicate") {
+      await completeIngestRun({
+        ingest_run_id: ingestRunId,
+        job_count: jobCount,
+        supabase,
+      });
       console.warn("Ingest router duplicate detected", {
         request_id: requestId,
         source,
@@ -236,6 +251,13 @@ export async function POST(req: Request) {
       return errorResponse("Failed to ingest job", 500);
     }
 
+    jobCount += 1;
+    await completeIngestRun({
+      ingest_run_id: ingestRunId,
+      job_count: jobCount,
+      supabase,
+    });
+
     console.info("Ingest router succeeded", {
       request_id: requestId,
       source,
@@ -245,6 +267,25 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ ok: true, id: result.job_id });
   } catch (error) {
+    if (ingestRunId) {
+      try {
+        await failIngestRun({
+          ingest_run_id: ingestRunId,
+          error_message: error instanceof Error ? error.message : String(error),
+          supabase,
+        });
+      } catch (failError) {
+        console.error("Ingest router failed to close ingest run", {
+          request_id: requestId,
+          source,
+          title,
+          company,
+          ingest_run_id: ingestRunId,
+          error: failError,
+        });
+      }
+    }
+
     console.error("Ingest router failed", {
       request_id: requestId,
       source,
