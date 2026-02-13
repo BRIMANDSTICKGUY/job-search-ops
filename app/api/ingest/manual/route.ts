@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "crypto";
 
 type ManualIngestBody = {
   title?: unknown;
@@ -51,6 +52,32 @@ export async function POST(req: Request) {
   });
 
   try {
+    const headerIdempotencyKey = req.headers.get("x-idempotency-key");
+    const idempotencyKey =
+      typeof headerIdempotencyKey === "string" && headerIdempotencyKey.trim().length > 0
+        ? headerIdempotencyKey.trim()
+        : randomUUID();
+
+    const { data: replayJob, error: replayError } = await supabase
+      .from("jobs")
+      .select("id")
+      .eq("idempotency_key", idempotencyKey)
+      .limit(1)
+      .maybeSingle();
+
+    if (replayError) {
+      console.error("Manual ingest idempotency lookup failed", replayError);
+      return errorResponse("Unexpected server error", 500);
+    }
+
+    if (replayJob?.id) {
+      console.info("Manual ingest idempotency replay", {
+        idempotency_key: idempotencyKey,
+        existing_job_id: replayJob.id,
+      });
+      return NextResponse.json({ ok: true, id: replayJob.id });
+    }
+
     const normalizedTitle = title.trim().toLowerCase();
     const normalizedCompany = company.trim().toLowerCase();
 
@@ -81,7 +108,7 @@ export async function POST(req: Request) {
 
     const { data, error } = await supabase
       .from("jobs")
-      .insert({ title, company, link, source: "manual" })
+      .insert({ title, company, link, source: "manual", idempotency_key: idempotencyKey })
       .select("id")
       .single();
 
