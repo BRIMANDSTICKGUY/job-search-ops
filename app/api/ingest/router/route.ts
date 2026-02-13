@@ -5,11 +5,13 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { ingestJob } from "@/lib/ingest/ingestJob";
 import { startIngestRun, completeIngestRun, failIngestRun } from "@/lib/ingest/ingestRun";
+import { runGreenhouseStub } from "@/lib/scrapers/greenhouseStub";
 
 type RouterIngestBody = {
   source?: unknown;
   title?: unknown;
   company?: unknown;
+  action?: unknown;
   link?: unknown;
   created_by_role?: unknown;
   created_by_id?: unknown;
@@ -66,9 +68,14 @@ export async function POST(req: Request) {
   const source = typeof body.source === "string" ? body.source.trim() : "";
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const company = typeof body.company === "string" ? body.company.trim() : "";
+  const action = body.action === "run_stub" ? "run_stub" : undefined;
 
   if (!source || !title || !company) {
     return errorResponse("Missing required fields: source, title, company", 400);
+  }
+
+  if (action === "run_stub" && source !== "greenhouse") {
+    return errorResponse("run_stub action is only allowed for greenhouse source", 400);
   }
 
   if (!ALLOWED_SOURCES.includes(source as (typeof ALLOWED_SOURCES)[number])) {
@@ -208,6 +215,28 @@ export async function POST(req: Request) {
       supabase,
     });
     ingestRunId = ingestRun.ingest_run_id;
+
+    if (source === "greenhouse" && action === "run_stub") {
+      const stubResult = await runGreenhouseStub({
+        company,
+        supabase,
+      });
+
+      jobCount = stubResult.ingested;
+      await completeIngestRun({
+        ingest_run_id: ingestRunId,
+        job_count: jobCount,
+        supabase,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        mode: "stub",
+        attempted: stubResult.attempted,
+        ingested: stubResult.ingested,
+        duplicates: stubResult.duplicates,
+      });
+    }
 
     const result = await ingestJob({
       source,
