@@ -21,6 +21,25 @@ type CoachClient = {
   name: string;
 };
 
+type AssignedJobRow = {
+  job:
+    | {
+        id: string;
+        title: string;
+        company: string;
+        lane: string;
+        client_status: string | null;
+      }
+    | {
+        id: string;
+        title: string;
+        company: string;
+        lane: string;
+        client_status: string | null;
+      }[]
+    | null;
+};
+
 export default async function CoachPage() {
   const supabase = getCoachSupabase();
   if (!supabase) {
@@ -33,9 +52,9 @@ export default async function CoachPage() {
     );
   }
 
-  const { data: jobs, error } = await supabase
-    .from("jobs")
-    .select("id, title, company, lane, client_status");
+  const { data: assignedJobs, error } = await supabase
+    .from("job_assignments")
+    .select("job:jobs(id, title, company, lane, client_status)");
 
   const { data: unassignedJobs, error: unassignedJobsError } = await supabase
     .from("unassigned_jobs")
@@ -62,7 +81,9 @@ export default async function CoachPage() {
     );
   }
 
-  const typedJobs = (jobs ?? []) as CoachJob[];
+  const typedJobs: CoachJob[] = ((assignedJobs ?? []) as AssignedJobRow[])
+    .map((row) => row.job)
+    .flatMap((job) => (Array.isArray(job) ? job : job ? [job] : []));
   const typedUnassignedJobs = (unassignedJobs ?? []) as UnassignedJob[];
   const typedClients = (clients ?? []) as CoachClient[];
   const LANES = ["INBOX", "VERIFIED", "CLIENT-SENT", "WATCHLIST", "REJECTED"];
