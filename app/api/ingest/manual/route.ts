@@ -53,7 +53,7 @@ export async function POST(req: Request) {
   try {
     const { data, error } = await supabase
       .from("jobs")
-      .insert({ title, company, link })
+      .insert({ title, company, link, source: "manual" })
       .select("id")
       .single();
 
