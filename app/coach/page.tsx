@@ -1,5 +1,5 @@
 import { getCoachSupabase } from "@/lib/supabase/coach";
-import { updateJobLane } from "./actions";
+import { assignJobToClient, updateJobLane } from "./actions";
 
 type CoachJob = {
   id: string;
@@ -7,6 +7,18 @@ type CoachJob = {
   company: string;
   lane: string;
   client_status: string | null;
+};
+
+type UnassignedJob = {
+  id: string;
+  title: string;
+  company: string;
+  link: string | null;
+};
+
+type CoachClient = {
+  id: string;
+  name: string;
 };
 
 export default async function CoachPage() {
@@ -25,24 +37,82 @@ export default async function CoachPage() {
     .from("jobs")
     .select("id, title, company, lane, client_status");
 
-  if (error) {
+  const { data: unassignedJobs, error: unassignedJobsError } = await supabase
+    .from("unassigned_jobs")
+    .select("id, title, company, link");
+
+  const { data: clients, error: clientsError } = await supabase
+    .from("clients")
+    .select("id, name")
+    .order("name", { ascending: true });
+
+  if (error || unassignedJobsError || clientsError) {
     // Guard exists only to avoid local dev crashes; production should still surface errors in logs/monitoring.
-    console.error("Coach dashboard query failed", error);
+    console.error("Coach dashboard query failed", {
+      jobsError: error,
+      unassignedJobsError,
+      clientsError,
+    });
     return (
       <main style={{ padding: "24px" }}>
         <h1>Coach dashboard unavailable (local)</h1>
-        <p>{error.message}</p>
+        <p>{error?.message ?? unassignedJobsError?.message ?? clientsError?.message}</p>
         <p>Check your `.env.local` Supabase credentials.</p>
       </main>
     );
   }
 
   const typedJobs = (jobs ?? []) as CoachJob[];
+  const typedUnassignedJobs = (unassignedJobs ?? []) as UnassignedJob[];
+  const typedClients = (clients ?? []) as CoachClient[];
   const LANES = ["INBOX", "VERIFIED", "CLIENT-SENT", "WATCHLIST", "REJECTED"];
 
   return (
     <main style={{ padding: "24px" }}>
       <h1>Coach Dashboard</h1>
+
+      <section style={{ marginBottom: 32 }}>
+        <h2>Unassigned Jobs (Intake)</h2>
+        {typedUnassignedJobs.length === 0 ? (
+          <p>No unassigned jobs.</p>
+        ) : (
+          typedUnassignedJobs.map((job) => (
+            <div key={job.id} style={{ marginBottom: 16 }}>
+              <h3>
+                {job.title} — {job.company}
+              </h3>
+              {job.link ? (
+                <p>
+                  <a href={job.link} target="_blank" rel="noreferrer">
+                    View job posting
+                  </a>
+                </p>
+              ) : null}
+              <form
+                action={async (formData: FormData) => {
+                  "use server";
+                  const clientId = formData.get("clientId");
+                  if (typeof clientId !== "string" || clientId.length === 0) return;
+                  await assignJobToClient(job.id, clientId);
+                }}
+                style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}
+              >
+                <select name="clientId" defaultValue="" required>
+                  <option value="" disabled>
+                    Select a client
+                  </option>
+                  {typedClients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit">Assign</button>
+              </form>
+            </div>
+          ))
+        )}
+      </section>
 
       {typedJobs.map((job) => (
         <div key={job.id} style={{ marginBottom: 24 }}>
