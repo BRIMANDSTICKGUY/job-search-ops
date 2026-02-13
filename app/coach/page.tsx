@@ -157,17 +157,103 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
 
       <section style={{ marginBottom: 32 }}>
         <h2>Manual Intake</h2>
-        {manualError ? (
-          <p style={{ color: "#b91c1c", fontSize: 13, marginBottom: 10 }}>{manualError}</p>
-        ) : null}
-        <form action={submitManualIntake} style={{ display: "grid", gap: 8, maxWidth: 480 }}>
-          <input type="text" name="title" placeholder="Title" required />
-          <input type="text" name="company" placeholder="Company" required />
-          <input type="text" name="link" placeholder="Link (optional)" />
-          <button type="submit" style={{ width: "fit-content" }}>
+        <p
+          id="manual-intake-error"
+          style={{
+            color: "#b91c1c",
+            fontSize: 13,
+            marginBottom: 10,
+            display: manualError ? "block" : "none",
+          }}
+        >
+          {manualError ?? ""}
+        </p>
+        <form
+          id="manual-intake-form"
+          action={submitManualIntake}
+          style={{ display: "grid", gap: 8, maxWidth: 480 }}
+        >
+          <input id="manual-intake-title" type="text" name="title" placeholder="Title" required />
+          <input
+            id="manual-intake-company"
+            type="text"
+            name="company"
+            placeholder="Company"
+            required
+          />
+          <input id="manual-intake-link" type="text" name="link" placeholder="Link (optional)" />
+          <button id="manual-intake-submit" type="submit" style={{ width: "fit-content" }}>
             Add to Intake
           </button>
         </form>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (() => {
+                const form = document.getElementById("manual-intake-form");
+                if (!form || form.dataset.bound === "1") return;
+                form.dataset.bound = "1";
+
+                const titleInput = document.getElementById("manual-intake-title");
+                const companyInput = document.getElementById("manual-intake-company");
+                const linkInput = document.getElementById("manual-intake-link");
+                const submitButton = document.getElementById("manual-intake-submit");
+                const errorEl = document.getElementById("manual-intake-error");
+
+                if (!titleInput || !companyInput || !linkInput || !submitButton || !errorEl) return;
+
+                const setError = (message) => {
+                  if (!message) {
+                    errorEl.textContent = "";
+                    errorEl.style.display = "none";
+                    return;
+                  }
+                  errorEl.textContent = message;
+                  errorEl.style.display = "block";
+                };
+
+                const validate = () => {
+                  const title = titleInput.value.trim();
+                  const company = companyInput.value.trim();
+                  const link = linkInput.value.trim();
+
+                  if (title.length < 2) return "Title must be at least 2 characters.";
+                  if (company.length < 2) return "Company must be at least 2 characters.";
+
+                  if (link.length > 0) {
+                    try {
+                      const url = new URL(link);
+                      if (url.protocol !== "http:" && url.protocol !== "https:") {
+                        return "Link must start with http:// or https://.";
+                      }
+                    } catch {
+                      return "Link must be a valid URL.";
+                    }
+                  }
+
+                  return "";
+                };
+
+                form.addEventListener("submit", (event) => {
+                  setError("");
+                  submitButton.disabled = true;
+
+                  const error = validate();
+                  if (error) {
+                    event.preventDefault();
+                    setError(error);
+                    submitButton.disabled = false;
+                    return;
+                  }
+
+                  titleInput.value = titleInput.value.trim();
+                  companyInput.value = companyInput.value.trim();
+                  linkInput.value = linkInput.value.trim();
+                });
+              })();
+            `,
+          }}
+        />
       </section>
 
       <section style={{ marginBottom: 32 }}>
