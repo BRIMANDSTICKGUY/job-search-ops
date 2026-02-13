@@ -92,6 +92,16 @@ export async function POST(req: Request) {
     return errorResponse("Ingest temporarily disabled", 503);
   }
 
+  if (action === "run_stub" && process.env.SCRAPERS_ENABLED !== "true") {
+    console.warn("Ingest router blocked: scrapers disabled", {
+      request_id: requestId,
+      source,
+      title,
+      company,
+    });
+    return errorResponse("Scrapers disabled", 503);
+  }
+
   const link =
     body.link === null
       ? null
