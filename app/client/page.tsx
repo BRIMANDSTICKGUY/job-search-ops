@@ -618,6 +618,9 @@ export default function ClientPage() {
 
               {/* Status buttons */}
               <div>Status = your progress with this application.</div>
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>
+                Client-controlled: reflects your real-world application progress
+              </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                 {STATUS_OPTIONS.map((s) => {
                   const active = (job.client_status ?? "new") === s;

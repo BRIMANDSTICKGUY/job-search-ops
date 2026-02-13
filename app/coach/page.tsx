@@ -156,6 +156,9 @@ export default async function CoachPage() {
           </h3>
           <p>Current Lane: {job.lane}</p>
           <p>Status: {job.client_status}</p>
+          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>
+            Coach-controlled: used to organize the job search
+          </div>
 
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             {LANES.map((lane) => (
