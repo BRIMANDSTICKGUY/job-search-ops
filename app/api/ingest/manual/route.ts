@@ -93,6 +93,8 @@ export async function POST(req: Request) {
         link,
         source,
         idempotency_key: idempotencyKey,
+        created_by_role: "coach",
+        created_by_id: null,
       })
       .select("id")
       .single();
