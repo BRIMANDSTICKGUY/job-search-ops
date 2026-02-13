@@ -3,6 +3,7 @@ import { assignJobToClient, updateJobLane } from "./actions";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { RunGreenhouseScrapeButton } from "@/components/RunGreenhouseScrapeButton";
 
 type CoachJob = {
   id: string;
@@ -306,6 +307,11 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
             `,
           }}
         />
+      </section>
+
+      <section style={{ marginBottom: 32 }}>
+        <h2>Scraper Runs</h2>
+        <RunGreenhouseScrapeButton />
       </section>
 
       <section style={{ marginBottom: 32 }}>
