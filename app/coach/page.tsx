@@ -1,5 +1,8 @@
 import { getCoachSupabase } from "@/lib/supabase/coach";
 import { assignJobToClient, updateJobLane } from "./actions";
+import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
 type CoachJob = {
   id: string;
@@ -31,7 +34,20 @@ type AssignedJobRow = {
   };
 };
 
-export default async function CoachPage() {
+type CoachPageProps = {
+  searchParams?: Promise<{ manual_error?: string | string[] }>;
+};
+
+export default async function CoachPage({ searchParams }: CoachPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const manualErrorParam = resolvedSearchParams?.manual_error;
+  const manualError =
+    typeof manualErrorParam === "string"
+      ? manualErrorParam
+      : Array.isArray(manualErrorParam)
+        ? manualErrorParam[0] ?? null
+        : null;
+
   const supabase = getCoachSupabase();
   if (!supabase) {
     console.error("Coach Supabase client unavailable; check server env.");
@@ -81,9 +97,78 @@ export default async function CoachPage() {
   const isIntakeJob = (jobId: string) => !assignedJobIds.has(jobId);
   const LANES = ["INBOX", "VERIFIED", "CLIENT-SENT", "WATCHLIST", "REJECTED"];
 
+  async function submitManualIntake(formData: FormData) {
+    "use server";
+
+    const title = formData.get("title");
+    const company = formData.get("company");
+    const link = formData.get("link");
+
+    if (typeof title !== "string" || typeof company !== "string") {
+      redirect("/coach?manual_error=Missing+required+fields");
+    }
+
+    const trimmedTitle = title.trim();
+    const trimmedCompany = company.trim();
+    const trimmedLink =
+      typeof link === "string" && link.trim().length > 0 ? link.trim() : null;
+
+    if (!trimmedTitle || !trimmedCompany) {
+      redirect("/coach?manual_error=Missing+required+fields");
+    }
+
+    const requestHeaders = await headers();
+    const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+    const proto = requestHeaders.get("x-forwarded-proto") ?? "http";
+
+    if (!host) {
+      redirect("/coach?manual_error=Unable+to+resolve+request+host");
+    }
+
+    const response = await fetch(`${proto}://${host}/api/ingest/manual`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: trimmedTitle,
+        company: trimmedCompany,
+        link: trimmedLink,
+      }),
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      let message = "Failed to add job to intake";
+      try {
+        const payload = (await response.json()) as { error?: unknown };
+        if (typeof payload?.error === "string" && payload.error.trim()) {
+          message = payload.error.trim();
+        }
+      } catch {}
+      redirect(`/coach?manual_error=${encodeURIComponent(message)}`);
+    }
+
+    revalidatePath("/coach");
+    redirect("/coach");
+  }
+
   return (
     <main style={{ padding: "24px" }}>
       <h1>Coach Dashboard</h1>
+
+      <section style={{ marginBottom: 32 }}>
+        <h2>Manual Intake</h2>
+        {manualError ? (
+          <p style={{ color: "#b91c1c", fontSize: 13, marginBottom: 10 }}>{manualError}</p>
+        ) : null}
+        <form action={submitManualIntake} style={{ display: "grid", gap: 8, maxWidth: 480 }}>
+          <input type="text" name="title" placeholder="Title" required />
+          <input type="text" name="company" placeholder="Company" required />
+          <input type="text" name="link" placeholder="Link (optional)" />
+          <button type="submit" style={{ width: "fit-content" }}>
+            Add to Intake
+          </button>
+        </form>
+      </section>
 
       <section style={{ marginBottom: 32 }}>
         <h2>Unassigned Jobs (Intake)</h2>
