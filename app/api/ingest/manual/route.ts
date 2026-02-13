@@ -9,25 +9,27 @@ type ManualIngestBody = {
   link?: unknown;
 };
 
+function errorResponse(message: string, status = 400) {
+  return NextResponse.json(
+    { ok: false, error: message },
+    { status }
+  );
+}
+
 export async function POST(req: Request) {
   const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    return NextResponse.json(
-      { ok: false, error: "Missing Supabase env" },
-      { status: 500 }
-    );
+    console.error("Manual ingest: missing Supabase env");
+    return errorResponse("Server misconfiguration", 500);
   }
 
   let body: ManualIngestBody;
   try {
     body = (await req.json()) as ManualIngestBody;
   } catch {
-    return NextResponse.json(
-      { ok: false, error: "Invalid JSON body" },
-      { status: 400 }
-    );
+    return errorResponse("Invalid JSON body");
   }
 
   const title = typeof body.title === "string" ? body.title.trim() : "";
@@ -41,35 +43,28 @@ export async function POST(req: Request) {
         : undefined;
 
   if (!title || !company || link === undefined) {
-    return NextResponse.json(
-      { ok: false, error: "Missing required fields: title, company, link" },
-      { status: 400 }
-    );
+    return errorResponse("Missing required fields: title, company, link");
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data, error } = await supabase
-    .from("jobs")
-    .insert({
-      title,
-      company,
-      link,
-    })
-    .select("id")
-    .single();
+  try {
+    const { data, error } = await supabase
+      .from("jobs")
+      .insert({ title, company, link })
+      .select("id")
+      .single();
 
-  if (error || !data) {
-    return NextResponse.json(
-      { ok: false, error: error?.message ?? "Failed to insert job" },
-      { status: 500 }
-    );
+    if (error || !data) {
+      console.error("Manual ingest insert failed", error);
+      return errorResponse("Failed to add job to intake", 500);
+    }
+
+    return NextResponse.json({ ok: true, id: data.id });
+  } catch (err) {
+    console.error("Manual ingest unexpected error", err);
+    return errorResponse("Unexpected server error", 500);
   }
-
-  return NextResponse.json({
-    ok: true,
-    id: data.id,
-  });
 }
