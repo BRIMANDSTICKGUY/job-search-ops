@@ -35,18 +35,22 @@ type AssignedJobRow = {
 };
 
 type CoachPageProps = {
-  searchParams?: Promise<{ manual_error?: string | string[] }>;
+  searchParams?: Promise<{ manual_error?: string | string[]; manual_success?: string | string[] }>;
 };
 
 export default async function CoachPage({ searchParams }: CoachPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const manualErrorParam = resolvedSearchParams?.manual_error;
+  const manualSuccessParam = resolvedSearchParams?.manual_success;
   const manualError =
     typeof manualErrorParam === "string"
       ? manualErrorParam
       : Array.isArray(manualErrorParam)
         ? manualErrorParam[0] ?? null
         : null;
+  const manualSuccess =
+    (typeof manualSuccessParam === "string" && manualSuccessParam === "1") ||
+    (Array.isArray(manualSuccessParam) && manualSuccessParam.includes("1"));
 
   const supabase = getCoachSupabase();
   if (!supabase) {
@@ -148,7 +152,7 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
     }
 
     revalidatePath("/coach");
-    redirect("/coach");
+    redirect("/coach?manual_success=1");
   }
 
   return (
@@ -157,6 +161,9 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
 
       <section style={{ marginBottom: 32 }}>
         <h2>Manual Intake</h2>
+        {manualSuccess ? (
+          <p style={{ color: "#15803d", fontSize: 13, marginBottom: 10 }}>Job added to intake</p>
+        ) : null}
         <p
           id="manual-intake-error"
           style={{
