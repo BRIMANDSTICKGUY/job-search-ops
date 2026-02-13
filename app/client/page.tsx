@@ -21,6 +21,7 @@ type Job = {
   created_at?: string | null;
   updated_at?: string | null;
   moved_at?: string | null;
+  job_assignments?: { id: string }[] | null;
 };
 
 type Client = {
@@ -134,7 +135,9 @@ export default function ClientPage() {
     // 1) Jobs
     const { data: jobsData, error: jobsErr } = await getSupabaseBrowser()
       .from("jobs")
-      .select("id,title,company,link,lane,client_status,created_at,updated_at,moved_at")
+      .select(
+        "id,title,company,link,lane,client_status,created_at,updated_at,moved_at,job_assignments(id)"
+      )
       .order("created_at", { ascending: false });
 
     if (jobsErr) {
@@ -541,6 +544,7 @@ export default function ClientPage() {
             )?.file_url ?? null;
           const jdSnapshotText = jobJdSnapshots[0]?.content_text ?? "—";
           const assignedClientId = jobAssignments[0]?.client_id ?? null;
+          const isAssignedByCoach = (job.job_assignments?.length ?? 0) > 0;
           const fileInputId = `applied-resume-${job.id}`;
           const jdText = jdTextByJobId[job.id] ?? "";
           const showJdInput = Boolean(showJdInputByJobId[job.id]);
@@ -557,6 +561,11 @@ export default function ClientPage() {
             >
               <div style={{ marginBottom: 6 }}>
                 <strong>{job.title ?? "(Untitled)"}</strong>{" "}
+                {isAssignedByCoach && (
+                  <span style={{ fontSize: 12, opacity: 0.75, marginRight: 6 }}>
+                    Assigned by coach
+                  </span>
+                )}
                 — {job.company ?? "(No company)"}{" "}
                 — <span>Lane:</span> <strong>{job.lane ?? "INBOX"}</strong>{" "}
                 — <span>Status:</span>{" "}
