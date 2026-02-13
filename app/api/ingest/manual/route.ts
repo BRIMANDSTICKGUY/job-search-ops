@@ -51,6 +51,34 @@ export async function POST(req: Request) {
   });
 
   try {
+    const normalizedTitle = title.trim().toLowerCase();
+    const normalizedCompany = company.trim().toLowerCase();
+
+    const { data: existingJob, error: dedupeError } = await supabase
+      .from("jobs")
+      .select("id")
+      .ilike("title", normalizedTitle)
+      .ilike("company", normalizedCompany)
+      .limit(1)
+      .maybeSingle();
+
+    if (dedupeError) {
+      console.error("Manual ingest dedupe lookup failed", dedupeError);
+      return errorResponse("Unexpected server error", 500);
+    }
+
+    if (existingJob?.id) {
+      console.info("Manual ingest duplicate detected", {
+        title: normalizedTitle,
+        company: normalizedCompany,
+        existing_job_id: existingJob.id,
+      });
+      return errorResponse(
+        "Duplicate: job already exists for this title and company",
+        409
+      );
+    }
+
     const { data, error } = await supabase
       .from("jobs")
       .insert({ title, company, link, source: "manual" })
