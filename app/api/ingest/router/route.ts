@@ -17,6 +17,7 @@ type RouterIngestBody = {
 };
 
 type CreatedByRole = "coach" | "client" | "system";
+const ALLOWED_SOURCES = ["manual", "greenhouse", "lever", "ashby"] as const;
 
 function errorResponse(message: string, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status });
@@ -62,6 +63,20 @@ export async function POST(req: Request) {
 
   if (!source || !title || !company) {
     return errorResponse("Missing required fields: source, title, company", 400);
+  }
+
+  if (!ALLOWED_SOURCES.includes(source as (typeof ALLOWED_SOURCES)[number])) {
+    return errorResponse("Source not allowed", 403);
+  }
+
+  if (process.env.INGEST_DISABLED === "true") {
+    console.warn("Ingest router blocked by kill switch", {
+      request_id: requestId,
+      source,
+      title,
+      company,
+    });
+    return errorResponse("Ingest temporarily disabled", 503);
   }
 
   const link =
