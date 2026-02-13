@@ -18,6 +18,12 @@ type RouterIngestBody = {
 
 type CreatedByRole = "coach" | "client" | "system";
 const ALLOWED_SOURCES = ["manual", "greenhouse", "lever", "ashby"] as const;
+const SOURCE_LIMITS = {
+  manual: { per_minute: 20, per_hour: 200 },
+  greenhouse: { per_minute: 60, per_hour: 1000 },
+  lever: { per_minute: 60, per_hour: 1000 },
+  ashby: { per_minute: 60, per_hour: 1000 },
+} as const;
 
 function errorResponse(message: string, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status });
@@ -130,6 +136,69 @@ export async function POST(req: Request) {
   });
 
   try {
+    const sourceKey = source as keyof typeof SOURCE_LIMITS;
+    const sourceLimits = SOURCE_LIMITS[sourceKey];
+    const oneMinuteAgoIso = new Date(Date.now() - 60_000).toISOString();
+    const oneHourAgoIso = new Date(Date.now() - 60 * 60_000).toISOString();
+
+    const { count: minuteCount, error: minuteCountError } = await supabase
+      .from("jobs")
+      .select("*", { count: "exact", head: true })
+      .eq("source", source)
+      .gte("created_at", oneMinuteAgoIso);
+
+    if (minuteCountError) {
+      console.error("Ingest router rate limit minute query failed", {
+        request_id: requestId,
+        source,
+        title,
+        company,
+        error: minuteCountError,
+      });
+      return errorResponse("Unexpected server error", 500);
+    }
+
+    if ((minuteCount ?? 0) >= sourceLimits.per_minute) {
+      console.warn("Ingest router rate limit exceeded", {
+        request_id: requestId,
+        source,
+        title,
+        company,
+        window: "per_minute",
+        limit: sourceLimits.per_minute,
+      });
+      return errorResponse("Rate limit exceeded (per minute)", 429);
+    }
+
+    const { count: hourCount, error: hourCountError } = await supabase
+      .from("jobs")
+      .select("*", { count: "exact", head: true })
+      .eq("source", source)
+      .gte("created_at", oneHourAgoIso);
+
+    if (hourCountError) {
+      console.error("Ingest router rate limit hour query failed", {
+        request_id: requestId,
+        source,
+        title,
+        company,
+        error: hourCountError,
+      });
+      return errorResponse("Unexpected server error", 500);
+    }
+
+    if ((hourCount ?? 0) >= sourceLimits.per_hour) {
+      console.warn("Ingest router rate limit exceeded", {
+        request_id: requestId,
+        source,
+        title,
+        company,
+        window: "per_hour",
+        limit: sourceLimits.per_hour,
+      });
+      return errorResponse("Rate limit exceeded (per hour)", 429);
+    }
+
     const result = await ingestJob({
       source,
       title,
