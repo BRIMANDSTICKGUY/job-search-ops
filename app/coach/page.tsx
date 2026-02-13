@@ -22,22 +22,13 @@ type CoachClient = {
 };
 
 type AssignedJobRow = {
-  job:
-    | {
-        id: string;
-        title: string;
-        company: string;
-        lane: string;
-        client_status: string | null;
-      }
-    | {
-        id: string;
-        title: string;
-        company: string;
-        lane: string;
-        client_status: string | null;
-      }[]
-    | null;
+  job: {
+    id: string;
+    title: string;
+    company: string;
+    lane: string;
+    client_status: string | null;
+  };
 };
 
 export default async function CoachPage() {
@@ -81,9 +72,9 @@ export default async function CoachPage() {
     );
   }
 
-  const typedJobs: CoachJob[] = ((assignedJobs ?? []) as AssignedJobRow[])
-    .map((row) => row.job)
-    .flatMap((job) => (Array.isArray(job) ? job : job ? [job] : []));
+  const typedJobs: CoachJob[] = ((assignedJobs ?? []) as AssignedJobRow[]).map(
+    (row) => row.job
+  );
   const typedUnassignedJobs = (unassignedJobs ?? []) as UnassignedJob[];
   const typedClients = (clients ?? []) as CoachClient[];
   const LANES = ["INBOX", "VERIFIED", "CLIENT-SENT", "WATCHLIST", "REJECTED"];
@@ -100,7 +91,23 @@ export default async function CoachPage() {
           typedUnassignedJobs.map((job) => (
             <div key={job.id} style={{ marginBottom: 16 }}>
               <h3>
-                {job.title} — {job.company}
+                {job.title} — {job.company}{" "}
+                <span
+                  style={{
+                    display: "inline-block",
+                    fontSize: 11,
+                    letterSpacing: 0.6,
+                    textTransform: "uppercase",
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    border: "1px solid #d1d5db",
+                    background: "#f9fafb",
+                    color: "#4b5563",
+                    verticalAlign: "middle",
+                  }}
+                >
+                  Intake
+                </span>
               </h3>
               {job.link ? (
                 <p>

@@ -562,7 +562,21 @@ export default function ClientPage() {
               <div style={{ marginBottom: 6 }}>
                 <strong>{job.title ?? "(Untitled)"}</strong>{" "}
                 {isAssignedByCoach && (
-                  <span style={{ fontSize: 12, opacity: 0.75, marginRight: 6 }}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      letterSpacing: 0.2,
+                      marginRight: 6,
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      border: "1px solid #bfdbfe",
+                      background: "#eff6ff",
+                      color: "#1d4ed8",
+                      verticalAlign: "middle",
+                    }}
+                  >
                     Assigned by coach
                   </span>
                 )}
