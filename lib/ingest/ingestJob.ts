@@ -8,6 +8,9 @@ type IngestJobInput = {
   link: string | null;
   created_by_role: "coach" | "client" | "system";
   created_by_id: string | null;
+  ingest_run_id?: string;
+  raw_payload?: unknown;
+  source_detail?: string;
   supabase: SupabaseClient;
 };
 
@@ -25,18 +28,22 @@ export async function ingestJob(input: IngestJobInput): Promise<IngestJobResult>
   const title = input.title.trim();
   const company = input.company.trim();
   const idempotencyKey = buildIdempotencyKey(input.source, title, company);
+  const insertPayload = {
+    title,
+    company,
+    link: input.link,
+    source: input.source,
+    idempotency_key: idempotencyKey,
+    created_by_role: input.created_by_role,
+    created_by_id: input.created_by_id,
+    ...(input.ingest_run_id !== undefined ? { ingest_run_id: input.ingest_run_id } : {}),
+    ...(input.raw_payload !== undefined ? { raw_payload: input.raw_payload } : {}),
+    ...(input.source_detail !== undefined ? { source_detail: input.source_detail } : {}),
+  };
 
   const { data, error } = await input.supabase
     .from("jobs")
-    .insert({
-      title,
-      company,
-      link: input.link,
-      source: input.source,
-      idempotency_key: idempotencyKey,
-      created_by_role: input.created_by_role,
-      created_by_id: input.created_by_id,
-    })
+    .insert(insertPayload)
     .select("id")
     .single();
 
