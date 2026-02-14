@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { RunGreenhouseScrapeButton } from "@/components/RunGreenhouseScrapeButton";
 import { IngestRunsTable } from "@/components/IngestRunsTable";
+import { IngestRunJobsTable } from "@/components/IngestRunJobsTable";
 
 type CoachJob = {
   id: string;
@@ -26,6 +27,16 @@ type CoachClient = {
   name: string;
 };
 
+type IngestRun = {
+  id: string;
+  source: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  job_count: number;
+  error_message: string | null;
+};
+
 type AssignedJobRow = {
   job: {
     id: string;
@@ -37,13 +48,18 @@ type AssignedJobRow = {
 };
 
 type CoachPageProps = {
-  searchParams?: Promise<{ manual_error?: string | string[]; manual_success?: string | string[] }>;
+  searchParams?: Promise<{
+    manual_error?: string | string[];
+    manual_success?: string | string[];
+    run_id?: string | string[];
+  }>;
 };
 
 export default async function CoachPage({ searchParams }: CoachPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const manualErrorParam = resolvedSearchParams?.manual_error;
   const manualSuccessParam = resolvedSearchParams?.manual_success;
+  const runIdParam = resolvedSearchParams?.run_id;
   const manualError =
     typeof manualErrorParam === "string"
       ? manualErrorParam
@@ -53,6 +69,12 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
   const manualSuccess =
     (typeof manualSuccessParam === "string" && manualSuccessParam === "1") ||
     (Array.isArray(manualSuccessParam) && manualSuccessParam.includes("1"));
+  const selectedRunId =
+    typeof runIdParam === "string"
+      ? runIdParam
+      : Array.isArray(runIdParam)
+        ? runIdParam[0] ?? null
+        : null;
 
   const supabase = getCoachSupabase();
   if (!supabase) {
@@ -78,17 +100,29 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
     .select("id, name")
     .order("name", { ascending: true });
 
-  if (error || unassignedJobsError || clientsError) {
+  const { data: ingestRuns, error: ingestRunsError } = await supabase
+    .from("ingest_runs")
+    .select("id, source, status, started_at, finished_at, job_count, error_message")
+    .order("started_at", { ascending: false })
+    .limit(20);
+
+  if (error || unassignedJobsError || clientsError || ingestRunsError) {
     // Guard exists only to avoid local dev crashes; production should still surface errors in logs/monitoring.
     console.error("Coach dashboard query failed", {
       jobsError: error,
       unassignedJobsError,
       clientsError,
+      ingestRunsError,
     });
     return (
       <main style={{ padding: "24px" }}>
         <h1>Coach dashboard unavailable (local)</h1>
-        <p>{error?.message ?? unassignedJobsError?.message ?? clientsError?.message}</p>
+        <p>
+          {error?.message ??
+            unassignedJobsError?.message ??
+            clientsError?.message ??
+            ingestRunsError?.message}
+        </p>
         <p>Check your `.env.local` Supabase credentials.</p>
       </main>
     );
@@ -99,6 +133,7 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
   );
   const typedUnassignedJobs = (unassignedJobs ?? []) as UnassignedJob[];
   const typedClients = (clients ?? []) as CoachClient[];
+  const typedIngestRuns = (ingestRuns ?? []) as IngestRun[];
   const assignedJobIds = new Set(typedJobs.map((job) => job.id));
   const isIntakeJob = (jobId: string) => !assignedJobIds.has(jobId);
   const existingJobKeys = [
@@ -314,6 +349,40 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
         <h2>Scraper Runs</h2>
         <RunGreenhouseScrapeButton />
         <IngestRunsTable />
+        <h3>Recent Ingest Runs</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Status</th>
+              <th>Started At</th>
+              <th>Finished At</th>
+              <th>Job Count</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            {typedIngestRuns.length === 0 ? (
+              <tr>
+                <td colSpan={6}>No ingest runs found.</td>
+              </tr>
+            ) : (
+              typedIngestRuns.map((run) => (
+                <tr key={run.id}>
+                  <td>
+                    <a href={`/coach?run_id=${encodeURIComponent(run.id)}`}>{run.source}</a>
+                  </td>
+                  <td>{run.status}</td>
+                  <td>{run.started_at}</td>
+                  <td>{run.finished_at ?? "—"}</td>
+                  <td>{run.job_count}</td>
+                  <td>{run.error_message ?? "—"}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+        {selectedRunId ? <IngestRunJobsTable runId={selectedRunId} /> : null}
       </section>
 
       <section style={{ marginBottom: 32 }}>
