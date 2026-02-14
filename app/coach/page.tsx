@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { RunGreenhouseScrapeButton } from "@/components/RunGreenhouseScrapeButton";
+import { IngestRunsTable } from "@/components/IngestRunsTable";
 
 type CoachJob = {
   id: string;
@@ -312,6 +313,7 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
       <section style={{ marginBottom: 32 }}>
         <h2>Scraper Runs</h2>
         <RunGreenhouseScrapeButton />
+        <IngestRunsTable />
       </section>
 
       <section style={{ marginBottom: 32 }}>
