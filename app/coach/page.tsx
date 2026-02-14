@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { RunGreenhouseScrapeButton } from "@/components/RunGreenhouseScrapeButton";
-import { IngestRunsTable } from "@/components/IngestRunsTable";
+import { IngestRunsTable, RetryIngestRunButton } from "@/components/IngestRunsTable";
 import { IngestRunJobsTable } from "@/components/IngestRunJobsTable";
 
 type CoachJob = {
@@ -359,12 +359,13 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
               <th>Finished At</th>
               <th>Job Count</th>
               <th>Error</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {typedIngestRuns.length === 0 ? (
               <tr>
-                <td colSpan={6}>No ingest runs found.</td>
+                <td colSpan={7}>No ingest runs found.</td>
               </tr>
             ) : (
               typedIngestRuns.map((run) => (
@@ -377,6 +378,13 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
                   <td>{run.finished_at ?? "—"}</td>
                   <td>{run.job_count}</td>
                   <td>{run.error_message ?? "—"}</td>
+                  <td>
+                    {run.status === "failed" ? (
+                      <RetryIngestRunButton runId={run.id} />
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                 </tr>
               ))
             )}
