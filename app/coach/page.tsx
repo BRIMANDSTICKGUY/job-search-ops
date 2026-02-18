@@ -377,7 +377,11 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
                   <td>{run.started_at}</td>
                   <td>{run.finished_at ?? "—"}</td>
                   <td>{run.job_count}</td>
-                  <td>{run.error_message ?? "—"}</td>
+                  <td>
+                    {run.status === "failed" && typeof run.error_message === "string"
+                      ? run.error_message
+                      : ""}
+                  </td>
                   <td>
                     {run.status === "failed" ? (
                       <RetryIngestRunButton runId={run.id} />
