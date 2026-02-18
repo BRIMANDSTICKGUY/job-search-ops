@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
+import { deny } from "@/lib/api/guard";
 
 type ScrapeRunResponse = {
   ok?: boolean;
@@ -11,29 +12,25 @@ type ScrapeRunResponse = {
   duplicates?: number;
 };
 
-function errorResponse(message: string, status = 400) {
-  return NextResponse.json({ ok: false, error: message }, { status });
-}
-
 export async function POST(req: Request) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = req.headers.get("authorization");
 
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return errorResponse("Unauthorized", 401);
+    return deny(req, "Unauthorized cron request", 401);
   }
 
   if (process.env.SCRAPERS_ENABLED !== "true") {
-    return errorResponse("Scrapers disabled", 503);
+    return deny(req, "Scrapers disabled", 503);
   }
 
   if (process.env.INGEST_DISABLED === "true") {
-    return errorResponse("Ingest temporarily disabled", 503);
+    return deny(req, "Ingest temporarily disabled", 503);
   }
 
   const scrapeAdminToken = process.env.SCRAPE_ADMIN_TOKEN;
   if (!scrapeAdminToken) {
-    return errorResponse("Server misconfiguration", 500);
+    return deny(req, "Server misconfiguration", 500);
   }
 
   const origin = new URL(req.url).origin;
@@ -70,6 +67,6 @@ export async function POST(req: Request) {
       duplicates: payload.duplicates,
     });
   } catch {
-    return errorResponse("Unexpected server error", 500);
+    return deny(req, "Unexpected server error", 500);
   }
 }
