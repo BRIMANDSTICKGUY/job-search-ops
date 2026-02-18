@@ -24,17 +24,34 @@ export async function POST(req: Request) {
 
   const source = typeof body.source === "string" ? body.source.trim() : "";
   const mode = typeof body.mode === "string" ? body.mode.trim() : "";
+  const sourceDetail = typeof body.source_detail === "string" ? body.source_detail.trim() : null;
 
   if (source !== "greenhouse") {
+    if (mode === "live") {
+      console.error("[scrape-run:early-exit]", {
+        mode,
+        source,
+        source_detail: sourceDetail,
+        reason: "invalid_source",
+      });
+    }
     return NextResponse.json(
       { ok: false, error: "Invalid source: must be 'greenhouse'" },
       { status: 400 }
     );
   }
 
-  if (mode !== "stub") {
+  if (mode !== "stub" && mode !== "live") {
+    if (mode === "live") {
+      console.error("[scrape-run:early-exit]", {
+        mode,
+        source,
+        source_detail: sourceDetail,
+        reason: "unsupported_mode",
+      });
+    }
     return NextResponse.json(
-      { ok: false, error: "Only stub mode is supported" },
+      { ok: false, error: "Invalid mode: must be 'stub' or 'live'" },
       { status: 400 }
     );
   }
@@ -53,6 +70,12 @@ export async function POST(req: Request) {
 
   const now = new Date().toISOString();
 
+  console.error("[scrape-run:before-insert]", {
+    mode,
+    source,
+    source_detail: sourceDetail,
+  });
+
   const { error } = await supabase.from("ingest_runs").insert({
     source: "greenhouse",
     status: "completed",
@@ -60,7 +83,7 @@ export async function POST(req: Request) {
     error_message: null,
     started_at: now,
     finished_at: now,
-    metadata: { trigger: "coach_manual_stub" },
+    metadata: { trigger: mode === "live" ? "scheduled_cron" : "coach_manual_stub" },
   });
 
   if (error) {
