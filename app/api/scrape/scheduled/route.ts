@@ -13,10 +13,11 @@ type ScrapeRunResponse = {
 };
 
 export async function POST(req: Request) {
+  const isVercelCron = req.headers.get("x-vercel-cron") === "1";
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = req.headers.get("authorization");
 
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!isVercelCron && (!cronSecret || authHeader !== `Bearer ${cronSecret}`)) {
     return deny(req, "Unauthorized cron request", 401);
   }
 
