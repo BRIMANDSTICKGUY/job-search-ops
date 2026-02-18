@@ -55,7 +55,12 @@ export async function failIngestRun(input: {
     .update({
       status: "failed",
       finished_at: new Date().toISOString(),
-      error_message: input.error_message,
+      error_message:
+        typeof input.error_message === "string"
+          ? input.error_message
+          : input.error_message
+            ? JSON.stringify(input.error_message)
+            : null,
     })
     .eq("id", input.ingest_run_id);
 
