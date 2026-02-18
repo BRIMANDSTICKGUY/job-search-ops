@@ -45,7 +45,7 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         source: "greenhouse",
-        mode: "stub",
+        mode: "live",
         source_detail: "scheduled_cron",
       }),
       cache: "no-store",
