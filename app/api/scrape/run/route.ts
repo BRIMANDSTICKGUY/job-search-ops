@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { ingestJob } from "@/lib/ingest/ingestJob";
+import { startIngestRun, completeIngestRun, failIngestRun } from "@/lib/ingest/ingestRun";
+import { getGreenhouseStubJobs } from "@/lib/scrapers/greenhouseStub";
 
 type ScrapeRunBody = {
   source?: unknown;
@@ -68,30 +71,72 @@ export async function POST(req: Request) {
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-  const now = new Date().toISOString();
-
-  console.error("[scrape-run:before-insert]", {
+  console.error("[scrape-run:before-ingest]", {
     mode,
     source,
     source_detail: sourceDetail,
   });
 
-  const { error } = await supabase.from("ingest_runs").insert({
+  const trigger = mode === "live" ? "scheduled_cron" : "coach_manual_stub";
+  const { ingest_run_id: ingestRunId } = await startIngestRun({
     source: "greenhouse",
-    status: "completed",
-    job_count: 3,
-    error_message: null,
-    started_at: now,
-    finished_at: now,
-    metadata: { trigger: mode === "live" ? "scheduled_cron" : "coach_manual_stub" },
+    metadata: {
+      trigger,
+      ...(sourceDetail ? { source_detail: sourceDetail } : {}),
+    },
+    supabase,
   });
 
-  if (error) {
-    return NextResponse.json(
-      { ok: false, error: "Failed to insert ingest run" },
-      { status: 500 }
-    );
-  }
+  let ingested = 0;
+  let duplicates = 0;
 
-  return NextResponse.json({ ok: true, ingested: 3, total: 3 });
+  try {
+    const jobs = await getGreenhouseStubJobs();
+
+    for (const job of jobs) {
+      const result = await ingestJob({
+        source: "greenhouse",
+        title: job.title,
+        company: job.company,
+        link: job.link ?? null,
+        created_by_role: "system",
+        created_by_id: null,
+        ingest_run_id: ingestRunId,
+        raw_payload: job.raw ?? job,
+        source_detail: sourceDetail ?? trigger,
+        supabase,
+      });
+
+      if (result.ok) {
+        ingested += 1;
+        continue;
+      }
+
+      if (result.reason === "duplicate") {
+        duplicates += 1;
+      }
+    }
+
+    await completeIngestRun({
+      ingest_run_id: ingestRunId,
+      job_count: ingested,
+      supabase,
+    });
+
+    return NextResponse.json({
+      ok: true,
+      ingest_run_id: ingestRunId,
+      ingested,
+      duplicates,
+      total: jobs.length,
+    });
+  } catch (error) {
+    await failIngestRun({
+      ingest_run_id: ingestRunId,
+      error_message: error instanceof Error ? error.message : String(error),
+      supabase,
+    });
+
+    return NextResponse.json({ ok: false, error: "Unexpected server error" }, { status: 500 });
+  }
 }

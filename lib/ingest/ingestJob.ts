@@ -58,5 +58,21 @@ export async function ingestJob(input: IngestJobInput): Promise<IngestJobResult>
     throw new Error("Ingestion insert succeeded without returning job id");
   }
 
+  const sourceIdentifier =
+    input.link ?? `${input.source}|${title.toLowerCase()}|${company.toLowerCase()}`;
+
+  const { error: eventError } = await input.supabase.from("job_ingestion_events").insert({
+    job_id: data.id,
+    source_type: input.source,
+    source_identifier: sourceIdentifier,
+    link: input.link,
+    raw_payload: input.raw_payload ?? null,
+    ...(input.ingest_run_id !== undefined ? { ingest_run_id: input.ingest_run_id } : {}),
+  });
+
+  if (eventError) {
+    throw eventError;
+  }
+
   return { ok: true, job_id: data.id as string };
 }
