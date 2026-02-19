@@ -13,30 +13,30 @@ type ScrapeRunResponse = {
 };
 
 export async function POST(req: Request) {
-  const isVercelCron = req.headers.get("x-vercel-cron") === "1";
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = req.headers.get("authorization");
-
-  if (!isVercelCron && (!cronSecret || authHeader !== `Bearer ${cronSecret}`)) {
-    return deny(req, "Unauthorized cron request", 401);
-  }
-
-  if (process.env.SCRAPERS_ENABLED !== "true") {
-    return deny(req, "Scrapers disabled", 503);
-  }
-
-  if (process.env.INGEST_DISABLED === "true") {
-    return deny(req, "Ingest temporarily disabled", 503);
-  }
-
-  const scrapeAdminToken = process.env.SCRAPE_ADMIN_TOKEN;
-  if (!scrapeAdminToken) {
-    return deny(req, "Server misconfiguration", 500);
-  }
-
-  const origin = new URL(req.url).origin;
-
   try {
+    const isVercelCron = req.headers.get("x-vercel-cron") === "1";
+    const cronSecret = process.env.CRON_SECRET;
+    const authHeader = req.headers.get("authorization");
+
+    if (!isVercelCron && (!cronSecret || authHeader !== `Bearer ${cronSecret}`)) {
+      return deny(req, "Unauthorized cron request", 401);
+    }
+
+    if (process.env.SCRAPERS_ENABLED !== "true") {
+      return deny(req, "Scrapers disabled", 503);
+    }
+
+    if (process.env.INGEST_DISABLED === "true") {
+      return deny(req, "Ingest temporarily disabled", 503);
+    }
+
+    const scrapeAdminToken = process.env.SCRAPE_ADMIN_TOKEN;
+    if (!scrapeAdminToken) {
+      return deny(req, "Server misconfiguration", 500);
+    }
+
+    const origin = new URL(req.url).origin;
+
     const response = await fetch(`${origin}/api/scrape/run`, {
       method: "POST",
       headers: {
@@ -67,7 +67,8 @@ export async function POST(req: Request) {
       ingested: payload.ingested,
       duplicates: payload.duplicates,
     });
-  } catch {
+  } catch (error) {
+    console.error("[scheduled:fatal]", error);
     return deny(req, "Unexpected server error", 500);
   }
 }
