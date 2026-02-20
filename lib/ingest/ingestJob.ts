@@ -61,14 +61,34 @@ export async function ingestJob(input: IngestJobInput): Promise<IngestJobResult>
   const sourceIdentifier =
     input.link ?? `${input.source}|${title.toLowerCase()}|${company.toLowerCase()}`;
 
-  const { error: eventError } = await input.supabase.from("job_ingestion_events").insert({
+  const jobIngestionEventPayload = {
     job_id: data.id,
     source_type: input.source,
     source_identifier: sourceIdentifier,
     link: input.link,
     raw_payload: input.raw_payload ?? null,
     ...(input.ingest_run_id !== undefined ? { ingest_run_id: input.ingest_run_id } : {}),
+  };
+
+  console.error("[CRON_DIAG][ingestJob][job_ingestion_events][payload]", jobIngestionEventPayload);
+  console.error("[CRON_DIAG][ingestJob][job_ingestion_events][ingest_run_id]", {
+    value: input.ingest_run_id,
+    type: typeof input.ingest_run_id,
   });
+  console.error("[CRON_DIAG][ingestJob][job_ingestion_events][expected_columns]", [
+    "id",
+    "job_id",
+    "source_type",
+    "source_identifier",
+    "link",
+    "raw_payload",
+    "ingest_run_id",
+    "created_at",
+  ]);
+
+  const { error: eventError } = await input.supabase
+    .from("job_ingestion_events")
+    .insert(jobIngestionEventPayload);
 
   if (eventError) {
     throw eventError;
