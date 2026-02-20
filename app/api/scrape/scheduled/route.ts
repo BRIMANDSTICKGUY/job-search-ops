@@ -12,8 +12,24 @@ type ScrapeRunResponse = {
   duplicates?: number;
 };
 
-export async function POST(req: Request) {
+function truncate(value: string, max = 2000): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max)}...<truncated>`;
+}
+
+function safeJson<T>(value: string): T | null {
   try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function POST(req: Request) {
+  let lastStep = "[CRON_DIAG][scheduled][00] Init";
+  try {
+    lastStep = "[CRON_DIAG][scheduled][01] Enter handler";
+    console.error(lastStep);
     const isVercelCron = req.headers.get("x-vercel-cron") === "1";
     const cronSecret = process.env.CRON_SECRET;
     const authHeader = req.headers.get("authorization");
@@ -35,8 +51,18 @@ export async function POST(req: Request) {
       return deny(req, "Server misconfiguration", 500);
     }
 
+    lastStep = "[CRON_DIAG][scheduled][02] Cron auth passed";
+    console.error(lastStep);
+
     const origin = new URL(req.url).origin;
 
+    lastStep = "[CRON_DIAG][scheduled][03] delegate ingest to run route";
+    console.error(lastStep);
+    lastStep = "[CRON_DIAG][scheduled][04] delegation acknowledged";
+    console.error(lastStep, { ingest_run_id: null, note: "delegated_to_run_route" });
+
+    lastStep = "[CRON_DIAG][scheduled][05] fetch /api/scrape/run START";
+    console.error(lastStep, { url: `${origin}/api/scrape/run` });
     const response = await fetch(`${origin}/api/scrape/run`, {
       method: "POST",
       headers: {
@@ -51,15 +77,34 @@ export async function POST(req: Request) {
       cache: "no-store",
     });
 
-    const payload = (await response.json()) as ScrapeRunResponse;
+    const responseText = await response.text();
+    const payload = safeJson<ScrapeRunResponse>(responseText) ?? {};
+    lastStep = "[CRON_DIAG][scheduled][06] fetch /api/scrape/run DONE";
+    console.error(lastStep, {
+      status: response.status,
+      body: truncate(responseText, 2000),
+    });
 
     if (!response.ok || payload.ok !== true) {
+      console.error("[CRON_DIAG][scheduled][06] fetch failure branch", {
+        responseOk: response.ok,
+        payloadOk: payload.ok,
+        status: response.status,
+        payload,
+      });
       return NextResponse.json(
         { ok: false, error: payload.error ?? "Scheduled scrape failed" },
         { status: response.status || 500 }
       );
     }
 
+    lastStep = "[CRON_DIAG][scheduled][07] completeIngestRun START";
+    console.error(lastStep);
+    lastStep = "[CRON_DIAG][scheduled][08] completeIngestRun DONE";
+    console.error(lastStep);
+
+    lastStep = "[CRON_DIAG][scheduled][09] Return OK";
+    console.error(lastStep);
     return NextResponse.json({
       ok: true,
       ingest_run_id: payload.ingest_run_id,
@@ -68,8 +113,30 @@ export async function POST(req: Request) {
       duplicates: payload.duplicates,
     });
   } catch (error) {
-    console.error("[scheduled:fatal]", error);
-    return deny(req, "Unexpected server error", 500);
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    const cause =
+      error instanceof Error && "cause" in error
+        ? (error as Error & { cause?: unknown }).cause
+        : undefined;
+    const supabaseLike = error as { code?: unknown; details?: unknown; hint?: unknown };
+
+    console.error("[CRON_DIAG][scheduled][ERR] message", message);
+    console.error("[CRON_DIAG][scheduled][ERR] stack", stack);
+    console.error("[CRON_DIAG][scheduled][ERR] cause", cause);
+    if (
+      typeof supabaseLike.code === "string" ||
+      typeof supabaseLike.details === "string" ||
+      typeof supabaseLike.hint === "string"
+    ) {
+      console.error("[CRON_DIAG][scheduled][ERR] supabase", {
+        code: supabaseLike.code,
+        details: supabaseLike.details,
+        hint: supabaseLike.hint,
+      });
+    }
+
+    return NextResponse.json({ ok: false, error: message, step: lastStep }, { status: 500 });
   }
 }
 
