@@ -25,11 +25,28 @@ export async function POST(req: Request) {
     if (!expectedAdminToken || adminToken !== expectedAdminToken) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
+    console.error("[CRON_DIAG][run][02] Admin auth passed", {
+      has_admin_header: adminToken !== null,
+    });
 
     let body: ScrapeRunBody;
     try {
       body = await req.json();
-    } catch {
+    } catch (error) {
+      const err = error as {
+        message?: string;
+        stack?: string;
+        code?: string;
+        details?: string;
+        hint?: string;
+      };
+      console.error("[CRON_DIAG][run][ERR]", {
+        message: err.message,
+        stack: err.stack,
+        code: err.code,
+        details: err.details,
+        hint: err.hint,
+      });
       return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
     }
 
@@ -87,8 +104,13 @@ export async function POST(req: Request) {
 
     const trigger = mode === "live" ? "scheduled_cron" : "coach_manual_stub";
 
-    lastStep = "[CRON_DIAG][run][02] startIngestRun START";
+    lastStep = "[CRON_DIAG][run][03] startIngestRun START";
     console.error(lastStep);
+    lastStep = "[CRON_DIAG][run][05] supabase INSERT START";
+    console.error(lastStep, {
+      table: "ingest_runs",
+      payload_keys: ["source", "metadata"],
+    });
     const { ingest_run_id: startedIngestRunId } = await startIngestRun({
       source: "greenhouse",
       metadata: {
@@ -97,8 +119,10 @@ export async function POST(req: Request) {
       },
       supabase,
     });
+    lastStep = "[CRON_DIAG][run][06] supabase INSERT DONE";
+    console.error(lastStep);
     ingestRunId = startedIngestRunId;
-    lastStep = "[CRON_DIAG][run][02] startIngestRun DONE";
+    lastStep = "[CRON_DIAG][run][04] startIngestRun DONE";
     console.error(lastStep, { ingest_run_id: ingestRunId });
 
     let ingested = 0;
@@ -117,8 +141,22 @@ export async function POST(req: Request) {
         job.link ??
         job.title;
 
-      lastStep = "[CRON_DIAG][run][job] ingestJob START";
+      lastStep = "[CRON_DIAG][run][07] ingestJob START";
       console.error(lastStep, { job_identifier: jobIdentifier });
+      lastStep = "[CRON_DIAG][run][08] ingestJob SUPABASE INSERT START";
+      console.error(lastStep, {
+        payload_keys: [
+          "source",
+          "title",
+          "company",
+          "link",
+          "created_by_role",
+          "created_by_id",
+          "ingest_run_id",
+          "raw_payload",
+          "source_detail",
+        ],
+      });
       const result = await ingestJob({
         source: "greenhouse",
         title: job.title,
@@ -131,7 +169,9 @@ export async function POST(req: Request) {
         source_detail: sourceDetail ?? trigger,
         supabase,
       });
-      lastStep = "[CRON_DIAG][run][job] ingestJob DONE";
+      lastStep = "[CRON_DIAG][run][09] ingestJob SUPABASE INSERT DONE";
+      console.error(lastStep, { job_identifier: jobIdentifier });
+      lastStep = "[CRON_DIAG][run][10] ingestJob DONE";
       console.error(lastStep, {
         job_identifier: jobIdentifier,
         ok: result.ok,
@@ -148,14 +188,14 @@ export async function POST(req: Request) {
       }
     }
 
-    lastStep = "[CRON_DIAG][run][03] completeIngestRun START";
+    lastStep = "[CRON_DIAG][run][11] completeIngestRun START";
     console.error(lastStep);
     await completeIngestRun({
       ingest_run_id: ingestRunId,
       job_count: ingested,
       supabase,
     });
-    lastStep = "[CRON_DIAG][run][03] completeIngestRun DONE";
+    lastStep = "[CRON_DIAG][run][12] completeIngestRun DONE";
     console.error(lastStep, { ingest_run_id: ingestRunId });
 
     return NextResponse.json({
@@ -166,6 +206,20 @@ export async function POST(req: Request) {
       total: jobs.length,
     });
   } catch (error) {
+    const err = error as {
+      message?: string;
+      stack?: string;
+      code?: string;
+      details?: string;
+      hint?: string;
+    };
+    console.error("[CRON_DIAG][run][ERR]", {
+      message: err.message,
+      stack: err.stack,
+      code: err.code,
+      details: err.details,
+      hint: err.hint,
+    });
     const message = error instanceof Error ? error.message : String(error);
     const stack = error instanceof Error ? error.stack : undefined;
     const cause =
