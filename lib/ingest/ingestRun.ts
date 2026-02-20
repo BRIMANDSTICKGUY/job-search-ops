@@ -16,6 +16,7 @@ export async function startIngestRun(input: {
     .single();
 
   if (error) {
+    console.error("[CRON_DIAG][startIngestRun][SUPABASE_ERROR]", error);
     throw error;
   }
 
