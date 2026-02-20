@@ -67,7 +67,7 @@ export async function POST(req: Request) {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-admin-token": scrapeAdminToken,
+        "x-admin-token": process.env.SCRAPE_ADMIN_TOKEN!,
       },
       body: JSON.stringify({
         source: "greenhouse",
