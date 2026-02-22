@@ -41,6 +41,11 @@ export async function ingestJob(input: IngestJobInput): Promise<IngestJobResult>
     ...(input.source_detail !== undefined ? { source_detail: input.source_detail } : {}),
   };
 
+  console.error("[CRON_DIAG][ingestJob][jobs][payload_keys]", Object.keys(insertPayload));
+  console.error(
+    "[CRON_DIAG][ingestJob][jobs][has_ingest_run_id]",
+    "ingest_run_id" in insertPayload
+  );
   const { data, error } = await input.supabase
     .from("jobs")
     .insert(insertPayload)
@@ -48,6 +53,7 @@ export async function ingestJob(input: IngestJobInput): Promise<IngestJobResult>
     .single();
 
   if (error) {
+    console.error("[CRON_DIAG][ingestJob][jobs][SUPABASE_ERROR]", error);
     if (error.code === "23505") {
       return { ok: false, reason: "duplicate" };
     }
@@ -91,7 +97,7 @@ export async function ingestJob(input: IngestJobInput): Promise<IngestJobResult>
     .insert(jobIngestionEventPayload);
 
   if (eventError) {
-    throw eventError;
+    console.error("[CRON_DIAG][ingestJob][job_ingestion_events][NON_BLOCKING_ERROR]", eventError);
   }
 
   return { ok: true, job_id: data.id as string };
