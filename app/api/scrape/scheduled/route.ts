@@ -63,11 +63,14 @@ export async function POST(req: Request) {
 
     lastStep = "[CRON_DIAG][scheduled][05] fetch /api/scrape/run START";
     console.error(lastStep, { url: `${origin}/api/scrape/run` });
+    console.error("[CRON_DIAG][scheduled][AUTH] header_will_be_set", {
+      has_token: !!scrapeAdminToken,
+    });
     const response = await fetch(`${origin}/api/scrape/run`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-admin-token": process.env.SCRAPE_ADMIN_TOKEN!,
+        "x-admin-token": scrapeAdminToken,
       },
       body: JSON.stringify({
         source: "greenhouse",

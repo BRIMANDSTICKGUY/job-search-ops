@@ -23,6 +23,11 @@ export async function POST(req: Request) {
     const expectedAdminToken = process.env.SCRAPE_ADMIN_TOKEN;
 
     if (!expectedAdminToken || adminToken !== expectedAdminToken) {
+      console.error("[CRON_DIAG][run][AUTH_FAIL]", {
+        has_expected_token: !!expectedAdminToken,
+        has_admin_header: adminToken !== null,
+        header_matches: expectedAdminToken ? adminToken === expectedAdminToken : false,
+      });
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
     console.error("[CRON_DIAG][run][02] Admin auth passed", {
