@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { startIngestRun } from "@/lib/ingest/ingestRun";
 
 export async function POST(req: Request) {
   console.error("[CRON_DIAG][run] ENTER");
@@ -26,10 +27,19 @@ export async function POST(req: Request) {
     serviceRoleKey!
   );
 
-  console.error("[CRON_DIAG][run] Supabase Client Initialized");
+  console.error("[CRON_DIAG][run] BEFORE startIngestRun");
+
+  const { ingest_run_id } = await startIngestRun({
+    source: "greenhouse",
+    metadata: { trigger: "diag_test" },
+    supabase,
+  });
+
+  console.error("[CRON_DIAG][run] startIngestRun OK", { ingest_run_id });
 
   return NextResponse.json({
     ok: true,
-    marker: "SUPABASE_CLIENT_OK",
+    marker: "INGEST_RUN_CREATED",
+    ingest_run_id,
   });
 }
