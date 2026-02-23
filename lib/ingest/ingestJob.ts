@@ -29,6 +29,7 @@ export async function ingestJob(input: IngestJobInput): Promise<IngestJobResult>
   const company = input.company.trim();
   const idempotencyKey = buildIdempotencyKey(input.source, title, company);
   const insertPayload = {
+    id: idempotencyKey,
     title,
     company,
     link: input.link,
