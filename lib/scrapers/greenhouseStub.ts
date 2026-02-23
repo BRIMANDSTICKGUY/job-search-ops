@@ -50,15 +50,12 @@ export async function runGreenhouseStub(input: {
       supabase: input.supabase,
     });
 
-    if (result.ok) {
-      ingested += 1;
-      continue;
-    }
-
-    if (result.reason === "duplicate") {
+    if (result.duplicate === true) {
       duplicates += 1;
       continue;
     }
+
+    ingested += 1;
   }
 
   return { attempted, ingested, duplicates };
