@@ -36,7 +36,6 @@ export async function ingestJob(input: IngestJobInput): Promise<IngestJobResult>
     idempotency_key: idempotencyKey,
     created_by_role: input.created_by_role,
     created_by_id: input.created_by_id,
-    ...(input.raw_payload !== undefined ? { raw_payload: input.raw_payload } : {}),
     ...(input.source_detail !== undefined ? { source_detail: input.source_detail } : {}),
   };
 
