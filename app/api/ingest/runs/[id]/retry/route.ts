@@ -95,14 +95,12 @@ export async function POST(_req: Request, context: RouteContext) {
           supabase,
         });
 
-        if (result.ok) {
-          ingested += 1;
+        if (result.duplicate === true) {
+          duplicates += 1;
           continue;
         }
 
-        if (result.reason === "duplicate") {
-          duplicates += 1;
-        }
+        ingested += 1;
       }
 
       await completeIngestRun({

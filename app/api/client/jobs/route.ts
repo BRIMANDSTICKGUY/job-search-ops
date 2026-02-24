@@ -41,6 +41,7 @@ export async function GET(req: Request) {
       .from("jobs")
       .select("id, title, company, source, created_at, client_status, link")
       .eq("client_id", user.id)
+      .eq("is_test", false)
       .order("created_at", { ascending: false });
 
     if (error) {

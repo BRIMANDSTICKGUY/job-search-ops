@@ -14,9 +14,7 @@ type IngestJobInput = {
   supabase: SupabaseClient;
 };
 
-type IngestJobResult =
-  | { ok: true; job_id: string }
-  | { ok: false; reason: "duplicate" };
+type IngestJobResult = { ok: true; job_id: string; duplicate: boolean };
 
 function buildIdempotencyKey(source: string, title: string, company: string): string {
   return createHash("sha256")
@@ -51,28 +49,30 @@ export async function ingestJob(input: IngestJobInput): Promise<IngestJobResult>
     .select("id")
     .single();
 
+  let isDuplicate = false;
+  let jobId = idempotencyKey;
   if (error) {
     console.error("[CRON_DIAG][ingestJob][jobs][SUPABASE_ERROR]", error);
     if (error.code === "23505") {
-      return { ok: false, reason: "duplicate" };
+      isDuplicate = true;
+    } else {
+      throw error;
     }
-    throw error;
-  }
-
-  if (!data?.id) {
+  } else if (!data?.id) {
     throw new Error("Ingestion insert succeeded without returning job id");
+  } else {
+    jobId = data.id as string;
   }
 
   const sourceIdentifier =
     input.link ?? `${input.source}|${title.toLowerCase()}|${company.toLowerCase()}`;
 
   const jobIngestionEventPayload = {
-    job_id: data.id,
+    job_id: jobId,
+    ingest_run_id: input.ingest_run_id ?? null,
     source_type: input.source,
     source_identifier: sourceIdentifier,
-    link: input.link,
     raw_payload: input.raw_payload ?? null,
-    ...(input.ingest_run_id !== undefined ? { ingest_run_id: input.ingest_run_id } : {}),
   };
 
   console.error("[CRON_DIAG][ingestJob][job_ingestion_events][payload]", jobIngestionEventPayload);
@@ -99,5 +99,9 @@ export async function ingestJob(input: IngestJobInput): Promise<IngestJobResult>
     console.error("[CRON_DIAG][ingestJob][job_ingestion_events][NON_BLOCKING_ERROR]", eventError);
   }
 
-  return { ok: true, job_id: data.id as string };
+  return {
+    ok: true,
+    job_id: jobId,
+    duplicate: isDuplicate,
+  };
 }

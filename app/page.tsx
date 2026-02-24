@@ -597,6 +597,11 @@ export default function Page() {
   // --- rendering helpers ---
   const activeUpper = toUpperLane(state.activeLane);
   const selectedCount = state.selectedJobIds.length;
+  const selectedJobContext = useMemo(() => {
+    if (state.selectedJobIds.length !== 1) return null;
+    const selectedJobId = state.selectedJobIds[0];
+    return visibleJobs.find((job) => job.id === selectedJobId) ?? null;
+  }, [state.selectedJobIds, visibleJobs]);
 
   const canGenerateClientLink =
     state.mode === "coach" && !!state.selectedClientId && state.selectedClientId !== "" && state.selectedClientId !== "ALL";
@@ -804,6 +809,12 @@ export default function Page() {
           ))
         )}
       </div>
+
+      {selectedJobContext ? (
+        <div style={{ marginTop: 12 }}>
+          <JobContextPanel job={selectedJobContext} mode={state.mode} />
+        </div>
+      ) : null}
 
       <div style={{ marginTop: 18, fontSize: 12, opacity: 0.75 }}>
         Local storage key: <code>{STORAGE_KEY}</code>
@@ -1066,5 +1077,204 @@ function JobCard(props: {
         )}
       </div>
     </div>
+  );
+}
+
+function JobContextPanel({ job, mode }: { job: Job; mode: Mode }) {
+  type JobNote = {
+    id: string;
+    author_role: string;
+    body: string;
+    created_at: string;
+  };
+
+  const [notes, setNotes] = useState<JobNote[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(true);
+  const [submittingNote, setSubmittingNote] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
+  const [newNoteBody, setNewNoteBody] = useState("");
+
+  async function fetchNotes() {
+    setLoadingNotes(true);
+    setNotesError(null);
+
+    try {
+      const {
+        data: { session },
+      } = await getSupabaseBrowser().auth.getSession();
+
+      const accessToken = session?.access_token;
+      const headers: HeadersInit = {};
+      if (accessToken) {
+        headers.authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/notes`, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      });
+
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        notes?: JobNote[];
+        error?: string;
+      };
+
+      if (!response.ok || !payload?.ok) {
+        setNotes([]);
+        setNotesError(payload?.error ?? "Failed to load notes");
+        return;
+      }
+
+      const sorted = Array.isArray(payload.notes)
+        ? [...payload.notes].sort(
+            (a, b) =>
+              new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          )
+        : [];
+
+      setNotes(sorted);
+    } catch {
+      setNotes([]);
+      setNotesError("Failed to load notes");
+    } finally {
+      setLoadingNotes(false);
+    }
+  }
+
+  useEffect(() => {
+    setNewNoteBody("");
+    void fetchNotes();
+  }, [job.id]);
+
+  async function handleSubmitNote(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    const body = newNoteBody.trim();
+    if (!body || body.length > 2000) {
+      setNotesError("Note must be 1-2000 characters");
+      return;
+    }
+
+    setSubmittingNote(true);
+    setNotesError(null);
+
+    try {
+      const {
+        data: { session },
+      } = await getSupabaseBrowser().auth.getSession();
+
+      const accessToken = session?.access_token;
+      const headers: HeadersInit = {
+        "content-type": "application/json",
+      };
+      if (accessToken) {
+        headers.authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/notes`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          body,
+          author_role: mode === "client" ? "client" : "coach",
+        }),
+      });
+
+      const payload = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !payload?.ok) {
+        setNotesError(payload?.error ?? "Failed to save note");
+        return;
+      }
+
+      setNewNoteBody("");
+      await fetchNotes();
+    } catch {
+      setNotesError("Failed to save note");
+    } finally {
+      setSubmittingNote(false);
+    }
+  }
+
+  return (
+    <aside
+      style={{
+        border: "1px solid #99b",
+        borderRadius: 10,
+        background: "#f8fbff",
+        padding: 12,
+      }}
+      aria-label="Job Context Panel"
+    >
+      <div style={{ fontWeight: 800, marginBottom: 6 }}>Job Context</div>
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 12, opacity: 0.75 }}>Title</div>
+        <div>{job.title || "(Untitled)"}</div>
+      </div>
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 12, opacity: 0.75 }}>Company</div>
+        <div>{job.company || "(Unknown company)"}</div>
+      </div>
+      <div style={{ borderTop: "1px solid #ccd7ee", paddingTop: 8 }}>
+        <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 6 }}>Notes</div>
+
+        {loadingNotes ? (
+          <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 10 }}>
+            Notes loading...
+          </div>
+        ) : notesError ? (
+          <div style={{ fontSize: 13, color: "#b91c1c", marginBottom: 10 }}>
+            {notesError}
+          </div>
+        ) : notes.length === 0 ? (
+          <div style={{ fontSize: 13, opacity: 0.75, marginBottom: 10 }}>
+            No notes yet.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+            {notes.map((note) => (
+              <div
+                key={note.id}
+                style={{
+                  border: "1px solid #d6e0f2",
+                  borderRadius: 8,
+                  padding: 8,
+                  background: "#fff",
+                }}
+              >
+                <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>
+                  {note.author_role === "coach"
+                    ? "Coach"
+                    : note.author_role === "client"
+                    ? "Client"
+                    : note.author_role}{" "}
+                  · {new Date(note.created_at).toLocaleString()}
+                </div>
+                <div style={{ whiteSpace: "pre-wrap" }}>{note.body}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmitNote}>
+          <textarea
+            value={newNoteBody}
+            onChange={(e) => setNewNoteBody(e.target.value)}
+            rows={3}
+            placeholder="Add a note..."
+            style={{ width: "100%", padding: 8, marginBottom: 6 }}
+            disabled={submittingNote}
+          />
+          <button type="submit" disabled={submittingNote}>
+            {submittingNote ? "Saving..." : "Add Note"}
+          </button>
+        </form>
+      </div>
+    </aside>
   );
 }

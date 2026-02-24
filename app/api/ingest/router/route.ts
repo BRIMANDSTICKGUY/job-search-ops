@@ -261,36 +261,10 @@ export async function POST(req: Request) {
       supabase,
     });
 
-    if (!result.ok && result.reason === "duplicate") {
-      await completeIngestRun({
-        ingest_run_id: ingestRunId,
-        job_count: jobCount,
-        supabase,
-      });
-      console.warn("Ingest router duplicate detected", {
-        request_id: requestId,
-        source,
-        title,
-        company,
-      });
-      return errorResponse(
-        "Duplicate: job already exists for this title and company",
-        409
-      );
+    if (!result.duplicate) {
+      jobCount += 1;
     }
 
-    if (!result.ok) {
-      console.error("Ingest router unexpected ingest result", {
-        request_id: requestId,
-        source,
-        title,
-        company,
-        result,
-      });
-      return errorResponse("Failed to ingest job", 500);
-    }
-
-    jobCount += 1;
     await completeIngestRun({
       ingest_run_id: ingestRunId,
       job_count: jobCount,
