@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   const { jobId } = await params;
-  const supabase = createServerClient();
+  const authorization = req.headers.get("authorization");
+  const supabase = createServerClient({ authorization });
 
   const { data, error } = await supabase
     .from("job_notes")
@@ -33,7 +34,8 @@ export async function POST(
   { params }: { params: Promise<{ jobId: string }> }
 ) {
   const { jobId } = await params;
-  const supabase = createServerClient();
+  const authorization = req.headers.get("authorization");
+  const supabase = createServerClient({ authorization });
   const payload = await req.json();
 
   if (!payload?.body || typeof payload.body !== "string") {
@@ -51,7 +53,7 @@ export async function POST(
     );
   }
 
-  const authHeader = req.headers.get("authorization");
+  const authHeader = authorization;
   const accessToken = authHeader?.startsWith("Bearer ")
     ? authHeader.slice("Bearer ".length).trim()
     : "";
