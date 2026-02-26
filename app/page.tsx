@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getSupabaseBrowser } from "../lib/supabase/browser";
 import type { AppState, Client, Job, LaneId, Mode, UpperLaneId } from "./types";
 import { STORAGE_KEY, normalizeLane, toLowerLane, toUpperLane } from "./types";
+import { JobMatchesTable } from "@/components/JobMatchesTable";
 
 /**
  * Job Search Ops — MVP Coach Portal
@@ -123,6 +124,7 @@ export default function Page() {
   // UI states
   const [search, setSearch] = useState("");
   const [sortMode, setSortMode] = useState<"movedNewest" | "createdNewest">("movedNewest");
+  const [coachClientView, setCoachClientView] = useState<"jobs" | "matches">("jobs");
 
   // Add job fields
   const [newTitle, setNewTitle] = useState("");
@@ -605,6 +607,17 @@ export default function Page() {
 
   const canGenerateClientLink =
     state.mode === "coach" && !!state.selectedClientId && state.selectedClientId !== "" && state.selectedClientId !== "ALL";
+  const canViewCoachMatches =
+    state.mode === "coach" &&
+    !!state.selectedClientId &&
+    state.selectedClientId !== "" &&
+    state.selectedClientId !== "ALL";
+
+  useEffect(() => {
+    if (!canViewCoachMatches && coachClientView !== "jobs") {
+      setCoachClientView("jobs");
+    }
+  }, [canViewCoachMatches, coachClientView]);
 
   return (
     <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", padding: 12, maxWidth: 1200 }}>
@@ -697,27 +710,58 @@ export default function Page() {
         </div>
       )}
 
-      {/* Lane Tabs (UI uppercase) */}
-      <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {UPPER_LANES.map((lane) => {
-          const active = activeUpper === lane;
-          return (
-            <button
-              key={lane}
-              onClick={() => setActiveUpperLane(lane)}
-              style={{
-                border: "1px solid #99b",
-                padding: "6px 10px",
-                borderRadius: 999,
-                background: active ? "#d7ecff" : "#f4f7ff",
-                fontWeight: active ? 800 : 600,
-              }}
-            >
-              {lane} <span style={{ opacity: 0.7 }}>{counts[lane]}</span>
-            </button>
-          );
-        })}
-      </div>
+      {canViewCoachMatches ? (
+        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            onClick={() => setCoachClientView("jobs")}
+            style={{
+              border: "1px solid #99b",
+              padding: "6px 10px",
+              borderRadius: 999,
+              background: coachClientView === "jobs" ? "#d7ecff" : "#f4f7ff",
+              fontWeight: coachClientView === "jobs" ? 800 : 600,
+            }}
+          >
+            Jobs
+          </button>
+          <button
+            onClick={() => setCoachClientView("matches")}
+            style={{
+              border: "1px solid #99b",
+              padding: "6px 10px",
+              borderRadius: 999,
+              background: coachClientView === "matches" ? "#d7ecff" : "#f4f7ff",
+              fontWeight: coachClientView === "matches" ? 800 : 600,
+            }}
+          >
+            Matches
+          </button>
+        </div>
+      ) : null}
+
+      {coachClientView === "jobs" || !canViewCoachMatches ? (
+        <>
+          {/* Lane Tabs (UI uppercase) */}
+          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {UPPER_LANES.map((lane) => {
+              const active = activeUpper === lane;
+              return (
+                <button
+                  key={lane}
+                  onClick={() => setActiveUpperLane(lane)}
+                  style={{
+                    border: "1px solid #99b",
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                    background: active ? "#d7ecff" : "#f4f7ff",
+                    fontWeight: active ? 800 : 600,
+                  }}
+                >
+                  {lane} <span style={{ opacity: 0.7 }}>{counts[lane]}</span>
+                </button>
+              );
+            })}
+          </div>
 
       {/* Main lane header */}
       <div style={{ marginTop: 10, background: "#d7ecff", border: "1px solid #99b", padding: 10, borderRadius: 10 }}>
@@ -787,34 +831,40 @@ export default function Page() {
         )}
       </div>
 
-      <div style={{ marginTop: 12 }}>
-        {visibleJobs.length === 0 ? (
-          <div style={{ padding: 20, opacity: 0.75, textAlign: "center", border: "1px dashed #aaa" }}>No jobs in this lane.</div>
-        ) : (
-          visibleJobs.map((job) => (
-            <JobCard
-              key={job.id}
-              mode={state.mode}
-              job={job}
-              clients={state.clients}
-              selected={state.selectedJobIds.includes(job.id)}
-              onToggleSelected={(checked) => toggleSelected(job.id, checked)}
-              onMove={(lane) => moveJob(job.id, lane)}
-              onAssignClient={(clientId) => addClientToJob(job.id, clientId)}
-              onRemoveClient={(clientId) => removeClientFromJob(job.id, clientId)}
-              onChangeClientNotes={(v) => setNotes(job.id, "clientNotes", v)}
-              onChangeInternalNotes={(v) => setNotes(job.id, "internalNotes", v)}
-              onSetOutcome={(v) => setOutcome(job.id, v)}
-            />
-          ))
-        )}
-      </div>
+          <div style={{ marginTop: 12 }}>
+            {visibleJobs.length === 0 ? (
+              <div style={{ padding: 20, opacity: 0.75, textAlign: "center", border: "1px dashed #aaa" }}>No jobs in this lane.</div>
+            ) : (
+              visibleJobs.map((job) => (
+                <JobCard
+                  key={job.id}
+                  mode={state.mode}
+                  job={job}
+                  clients={state.clients}
+                  selected={state.selectedJobIds.includes(job.id)}
+                  onToggleSelected={(checked) => toggleSelected(job.id, checked)}
+                  onMove={(lane) => moveJob(job.id, lane)}
+                  onAssignClient={(clientId) => addClientToJob(job.id, clientId)}
+                  onRemoveClient={(clientId) => removeClientFromJob(job.id, clientId)}
+                  onChangeClientNotes={(v) => setNotes(job.id, "clientNotes", v)}
+                  onChangeInternalNotes={(v) => setNotes(job.id, "internalNotes", v)}
+                  onSetOutcome={(v) => setOutcome(job.id, v)}
+                />
+              ))
+            )}
+          </div>
 
-      {selectedJobContext ? (
+          {selectedJobContext ? (
+            <div style={{ marginTop: 12 }}>
+              <JobContextPanel job={selectedJobContext} mode={state.mode} />
+            </div>
+          ) : null}
+        </>
+      ) : (
         <div style={{ marginTop: 12 }}>
-          <JobContextPanel job={selectedJobContext} mode={state.mode} />
+          <JobMatchesTable clientId={state.selectedClientId as string} />
         </div>
-      ) : null}
+      )}
 
       <div style={{ marginTop: 18, fontSize: 12, opacity: 0.75 }}>
         Local storage key: <code>{STORAGE_KEY}</code>

@@ -23,6 +23,7 @@ export function ClientJobsTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<ClientJob[]>([]);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -41,8 +42,10 @@ export function ClientJobsTable() {
           if (!active) return;
           setError("Unauthorized");
           setJobs([]);
+          setAccessToken(null);
           return;
         }
+        setAccessToken(accessToken);
 
         const response = await fetch("/api/client/jobs", {
           method: "GET",
@@ -67,6 +70,7 @@ export function ClientJobsTable() {
         if (!active) return;
         setError("Failed to load jobs");
         setJobs([]);
+        setAccessToken(null);
       } finally {
         if (active) {
           setLoading(false);
@@ -80,6 +84,22 @@ export function ClientJobsTable() {
       active = false;
     };
   }, []);
+
+  function postAppliedAction(jobId: string) {
+    if (!accessToken) return;
+
+    void fetch("/api/client/job-action", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        job_id: jobId,
+        action: "applied",
+      }),
+    }).catch(() => {});
+  }
 
   if (loading) {
     return <p>Loading jobs...</p>;
@@ -117,7 +137,12 @@ export function ClientJobsTable() {
                 <td>{job.client_status ?? "—"}</td>
                 <td>
                   {job.link ? (
-                    <a href={job.link} target="_blank" rel="noreferrer">
+                    <a
+                      href={job.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() => postAppliedAction(job.id)}
+                    >
                       View
                     </a>
                   ) : (

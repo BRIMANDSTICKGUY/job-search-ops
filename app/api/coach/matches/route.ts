@@ -3,38 +3,34 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-type CareerLevel = "early" | "mid" | "senior" | "executive";
-type RemotePreference = "remote" | "hybrid" | "onsite" | "all";
+type MatchBand = "green" | "yellow" | "red";
 
-type ClientProfile = {
-  client_id: string;
-  primary_role: string;
-  secondary_role: string | null;
-  career_level: CareerLevel | null;
-  core_skills: string[] | null;
-  preferred_locations: string[] | null;
-  remote_preference: RemotePreference;
+type JobMatchRow = {
+  job_id: string;
+  score: number;
+  band: MatchBand;
+  reasons: string[];
+  flags: Record<string, unknown> | null;
 };
 
 type JobRow = {
   id: string;
   title: string | null;
   company: string | null;
-  source: string | null;
-  created_at: string | null;
-  link: string | null;
   location: string | null;
-  raw_payload: unknown;
+  created_at: string | null;
 };
 
-type JobMatch = {
-  id: string;
+type MatchItem = {
+  job_id: string;
+  score: number;
+  band: MatchBand;
+  reasons: string[];
+  flags: Record<string, unknown> | null;
   title: string | null;
   company: string | null;
-  source: string | null;
+  location: string | null;
   created_at: string | null;
-  job_score: number;
-  link: string | null;
 };
 
 function unauthorized() {
@@ -62,8 +58,8 @@ function hasCoachRole(user: { app_metadata?: unknown; user_metadata?: unknown })
   return appRole === "coach" || userRole === "coach";
 }
 
-function normalizeText(value: string | null | undefined): string {
-  return (value ?? "").toLowerCase();
+function emptyBands(): Record<MatchBand, MatchItem[]> {
+  return { green: [], yellow: [], red: [] };
 }
 
 export async function GET(req: Request) {
@@ -103,93 +99,64 @@ export async function GET(req: Request) {
       return badRequest("client_id is required");
     }
 
-    const { data: profileData, error: profileError } = await supabase
-      .from("client_profiles")
-      .select("client_id, primary_role, secondary_role, career_level, core_skills, preferred_locations, remote_preference")
-      .eq("client_id", clientId)
-      .maybeSingle();
+    const { data: matchesData, error: matchesError } = await supabase
+      .from("job_matches")
+      .select("job_id, score, band, reasons, flags")
+      .eq("client_id", clientId);
 
-    if (profileError) {
-      return serverError(profileError.message || "Failed to load client profile");
+    if (matchesError) {
+      return serverError(matchesError.message || "Failed to load matches");
     }
 
-    if (!profileData) {
-      return NextResponse.json({ ok: true, matches: [] as JobMatch[] });
+    const bands = emptyBands();
+    const matchRows = (matchesData ?? []) as JobMatchRow[];
+
+    if (matchRows.length === 0) {
+      return NextResponse.json({ ok: true, bands });
     }
 
-    const profile = profileData as ClientProfile;
+    const jobIds = Array.from(new Set(matchRows.map((row) => row.job_id))).filter(
+      (id) => typeof id === "string" && id.length > 0
+    );
 
     const { data: jobsData, error: jobsError } = await supabase
       .from("jobs")
-      .select("id, title, company, source, created_at, link, location, raw_payload")
+      .select("id, title, company, location, created_at")
       .eq("is_test", false)
-      .order("created_at", { ascending: false })
-      .limit(200);
+      .in("id", jobIds);
 
     if (jobsError) {
       return serverError(jobsError.message || "Failed to load jobs");
     }
 
-    const roles = [profile.primary_role, profile.secondary_role].filter(
-      (role): role is string => typeof role === "string" && role.trim().length > 0
+    const jobsById = new Map<string, JobRow>(
+      ((jobsData ?? []) as JobRow[]).map((job) => [job.id, job])
     );
 
-    const preferredLocations = (profile.preferred_locations ?? [])
-      .map((loc) => loc.trim().toLowerCase())
-      .filter((loc) => loc.length > 0);
-
-    const coreSkills = (profile.core_skills ?? [])
-      .map((skill) => skill.trim().toLowerCase())
-      .filter((skill) => skill.length > 0);
-
-    const matches: JobMatch[] = [];
-
-    for (const row of (jobsData ?? []) as JobRow[]) {
-      const title = normalizeText(row.title);
-      const company = normalizeText(row.company);
-      const location = normalizeText(row.location);
-      const rawText = normalizeText(
-        typeof row.raw_payload === "string" ? row.raw_payload : JSON.stringify(row.raw_payload ?? {})
-      );
-      const haystack = `${title} ${company} ${location} ${rawText}`;
-
-      const roleMatched = roles.some((role) => haystack.includes(role.toLowerCase()));
-      if (!roleMatched) {
+    for (const row of matchRows) {
+      if (row.band !== "green" && row.band !== "yellow" && row.band !== "red") {
         continue;
       }
 
-      const locationMatched =
-        profile.remote_preference === "all"
-          ? true
-          : preferredLocations.some((loc) => loc.length > 0 && location.includes(loc));
-
-      if (!locationMatched) {
-        continue;
-      }
-
-      let score = 1;
-      if (roles[0] && haystack.includes(roles[0].toLowerCase())) score += 2;
-      if (roles[1] && haystack.includes(roles[1].toLowerCase())) score += 1;
-
-      if (coreSkills.length > 0) {
-        const skillHits = coreSkills.filter((skill) => haystack.includes(skill)).length;
-        score += skillHits;
-      }
-
-      matches.push({
-        id: row.id,
-        title: row.title,
-        company: row.company,
-        source: row.source,
-        created_at: row.created_at,
-        job_score: score,
-        link: row.link,
+      const job = jobsById.get(row.job_id);
+      bands[row.band].push({
+        job_id: row.job_id,
+        score: row.score,
+        band: row.band,
+        reasons: row.reasons,
+        flags: row.flags,
+        title: job?.title ?? null,
+        company: job?.company ?? null,
+        location: job?.location ?? null,
+        created_at: job?.created_at ?? null,
       });
     }
 
-    matches.sort((a, b) => b.job_score - a.job_score);
+    bands.green.sort((a, b) => b.score - a.score);
+    bands.yellow.sort((a, b) => b.score - a.score);
+    bands.red.sort((a, b) => b.score - a.score);
 
-    return NextResponse.json({ ok: true, matches });
+    return NextResponse.json({ ok: true, bands });
   } catch (error) {
     return serverError(error instanceof Error ? error.message : "Unexpected server error");
   }
