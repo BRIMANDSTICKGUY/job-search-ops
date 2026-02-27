@@ -1,9 +1,21 @@
 export const runtime = "nodejs";
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export async function GET(req: Request) {
+type AssignmentRow = {
+  job_id: string | null;
+};
+
+const JOB_SELECT_FIELDS = "id, title, company, source, created_at, client_status, link";
+
+function parseBearerToken(authorization: string | null): string {
+  if (!authorization) return "";
+  if (!authorization.startsWith("Bearer ")) return "";
+  return authorization.slice("Bearer ".length).trim();
+}
+
+export async function GET(req: NextRequest) {
   try {
     const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -15,10 +27,7 @@ export async function GET(req: Request) {
       );
     }
 
-    const authHeader = req.headers.get("authorization");
-    const accessToken = authHeader?.startsWith("Bearer ")
-      ? authHeader.slice("Bearer ".length).trim()
-      : "";
+    const accessToken = parseBearerToken(req.headers.get("authorization"));
 
     if (!accessToken) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
@@ -37,21 +46,70 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data, error } = await supabase
-      .from("jobs")
-      .select("id, title, company, source, created_at, client_status, link")
-      .eq("client_id", user.id)
-      .eq("is_test", false)
-      .order("created_at", { ascending: false });
+    const { data: assignments, error: assignmentsError } = await supabase
+      .from("job_assignments")
+      .select("job_id")
+      .eq("client_id", user.id);
 
-    if (error) {
+    if (assignmentsError) {
       return NextResponse.json(
-        { ok: false, error: error.message || "Failed to load jobs" },
+        { ok: false, error: assignmentsError.message || "Failed to load assignments" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ ok: true, jobs: data ?? [] });
+    const jobIds = Array.from(
+      new Set(
+        ((assignments ?? []) as AssignmentRow[])
+          .map((row) => (row.job_id ?? "").trim())
+          .filter((id) => id.length > 0)
+      )
+    );
+
+    if (jobIds.length === 0) {
+      return NextResponse.json({ ok: true, jobs: [] });
+    }
+
+    const { data: jobsById, error: jobsByIdError } = await supabase
+      .from("jobs")
+      .select(JOB_SELECT_FIELDS)
+      .in("id", jobIds)
+      .eq("is_test", false)
+      .order("created_at", { ascending: false });
+
+    if (jobsByIdError) {
+      return NextResponse.json(
+        { ok: false, error: jobsByIdError.message || "Failed to load jobs" },
+        { status: 500 }
+      );
+    }
+
+    if ((jobsById ?? []).length > 0) {
+      return NextResponse.json({ ok: true, jobs: jobsById ?? [] });
+    }
+
+    const { data: jobsByJobId, error: jobsByJobIdError } = await supabase
+      .from("jobs")
+      .select(JOB_SELECT_FIELDS)
+      .in("job_id", jobIds)
+      .eq("is_test", false)
+      .order("created_at", { ascending: false });
+
+    if (jobsByJobIdError) {
+      if (
+        jobsByJobIdError.message.toLowerCase().includes("column") &&
+        jobsByJobIdError.message.includes("job_id")
+      ) {
+        return NextResponse.json({ ok: true, jobs: [] });
+      }
+
+      return NextResponse.json(
+        { ok: false, error: jobsByJobIdError.message || "Failed to load jobs" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, jobs: jobsByJobId ?? [] });
   } catch (error) {
     return NextResponse.json(
       {
