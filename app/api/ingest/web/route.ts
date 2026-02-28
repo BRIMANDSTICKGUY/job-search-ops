@@ -339,10 +339,36 @@ export async function POST() {
 
           if (jobErr || !jobRow) continue;
 
+          const { data: clientMapping, error: clientMappingError } = await supabase
+            .from("clients")
+            .select("auth_user_id")
+            .eq("id", source.client_id)
+            .maybeSingle();
+
+          if (clientMappingError) {
+            return NextResponse.json(
+              { ok: false, error: clientMappingError.message ?? "Failed to load client mapping" },
+              { status: 500 }
+            );
+          }
+
+          const clientUuid =
+            clientMapping && typeof clientMapping.auth_user_id === "string"
+              ? clientMapping.auth_user_id
+              : null;
+
+          if (!clientUuid) {
+            return NextResponse.json(
+              { ok: false, error: "client not mapped to auth_user_id" },
+              { status: 400 }
+            );
+          }
+
           const { error: eventErr } = await supabase
             .from("job_ingestion_events")
             .insert({
               client_id: source.client_id,
+              client_uuid: clientUuid,
               source_type: source.source_type,
               link: job.link,
               raw_payload: job.raw_payload ?? null,

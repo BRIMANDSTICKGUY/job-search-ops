@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     const { data: assignments, error: assignmentsError } = await supabase
       .from("job_assignments")
       .select("job_id")
-      .eq("client_id_legacy", user.id);
+      .eq("client_id", user.id);
 
     if (assignmentsError) {
       return NextResponse.json(
