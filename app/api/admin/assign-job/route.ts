@@ -41,8 +41,8 @@ export async function POST(req: Request) {
   const clientId = typeof body.client_id === "string" ? body.client_id.trim() : "";
   const jobId = typeof body.job_id === "string" ? body.job_id.trim() : "";
 
-  if (!clientId || !isUuid(clientId)) {
-    return badRequest("client_id must be a valid UUID");
+  if (!clientId) {
+    return badRequest("client_id is required");
   }
 
   if (!jobId) {
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
   const { data: existing, error: existingError } = await supabase
     .from("job_assignments")
     .select("id")
-    .eq("client_id", clientId)
+    .eq("client_id_legacy", clientId)
     .eq("job_id", jobId)
     .limit(1)
     .maybeSingle();
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
   }
 
   const { error: insertError } = await supabase.from("job_assignments").insert({
-    client_id: clientId,
+    client_id_legacy: clientId,
     job_id: jobId,
     assigned_at: new Date().toISOString(),
     assigned_by: null,
