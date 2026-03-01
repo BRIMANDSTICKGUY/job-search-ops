@@ -46,6 +46,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
+    console.error("CLIENT USER ID:", user.id);
+
     const { data: assignments, error: assignmentsError } = await supabase
       .from("job_assignments")
       .select("job_id")
