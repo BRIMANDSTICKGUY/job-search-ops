@@ -97,7 +97,7 @@ export async function POST(req: Request) {
       console.error("[CRON_DIAG][scheduled][AUTH] bypass_header_branch", { branch: "without_bypass" });
     }
 
-    const response = await fetch(`${origin}/api/scrape/run`, {
+    const response = await fetch(`${origin}/api/ingest/web`, {
       method: "POST",
       headers: runHeaders,
       body: JSON.stringify({
