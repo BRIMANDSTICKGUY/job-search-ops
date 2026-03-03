@@ -8,7 +8,8 @@ type IngestionSource = {
   id: string;
   client_id: string | null;
   source_type: JobSourceType;
-  source_url: string | null;
+  base_url: string | null;
+  company_name: string | null;
   active: boolean;
 };
 
@@ -36,10 +37,10 @@ function isValidSourceUrl(u: string | null | undefined): u is string {
   return typeof u === "string" && u.trim().length > 0;
 }
 
-function extractCompanySlug(sourceUrl: string | null): string | null {
-  if (!sourceUrl) return null;
+function extractCompanySlug(baseUrl: string | null): string | null {
+  if (!baseUrl) return null;
   try {
-    const url = new URL(sourceUrl);
+    const url = new URL(baseUrl);
     const parts = url.pathname.split("/").filter(Boolean);
     if (url.hostname.includes("greenhouse.io")) {
       const idx = parts.findIndex((p) => p === "boards" || p === "boards-api.greenhouse.io");
@@ -55,7 +56,7 @@ function extractCompanySlug(sourceUrl: string | null): string | null {
 }
 
 function companyFromSource(source: IngestionSource): string {
-  const slug = extractCompanySlug(source.source_url);
+  const slug = extractCompanySlug(source.base_url);
   if (slug) return slug.replace(/[-_]/g, " ");
   return "Unknown";
 }
@@ -85,7 +86,7 @@ async function fetchGreenhouse(
   source: IngestionSource,
   fetchErrors: FetchError[]
 ): Promise<NormalizedJob[]> {
-  const sourceUrl = source.source_url;
+  const sourceUrl = source.base_url;
   if (!isValidSourceUrl(sourceUrl)) return [];
   const slug = extractCompanySlug(sourceUrl);
   if (!slug) return [];
@@ -140,7 +141,7 @@ async function fetchLever(
   source: IngestionSource,
   fetchErrors: FetchError[]
 ): Promise<NormalizedJob[]> {
-  const sourceUrl = source.source_url;
+  const sourceUrl = source.base_url;
   if (!isValidSourceUrl(sourceUrl)) return [];
   const slug = extractCompanySlug(sourceUrl);
   if (!slug) return [];
@@ -195,7 +196,7 @@ async function fetchAshby(
   source: IngestionSource,
   fetchErrors: FetchError[]
 ): Promise<NormalizedJob[]> {
-  const sourceUrl = source.source_url;
+  const sourceUrl = source.base_url;
   if (!isValidSourceUrl(sourceUrl)) return [];
 
   const slug = extractCompanySlug(sourceUrl);
@@ -310,7 +311,7 @@ export async function POST(req: Request) {
 
     const { data: sources, error } = await supabase
       .from("ingestion_sources")
-      .select("id,client_id,source_type,source_url,active")
+      .select("id,client_id,source_type,base_url,company_name,active")
       .eq("active", true);
 
     if (error || !sources) {
