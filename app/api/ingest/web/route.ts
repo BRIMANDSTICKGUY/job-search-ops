@@ -275,8 +275,18 @@ async function fetchExistingLinks(
   return new Set((data as any[]).map((d) => d.link).filter(Boolean) as string[]);
 }
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    const adminToken = req.headers.get("x-admin-token");
+    const expectedToken = process.env.SCRAPE_ADMIN_TOKEN;
+
+    if (!expectedToken || adminToken !== expectedToken) {
+      return NextResponse.json(
+        { ok: false, error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
     const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
