@@ -25,16 +25,35 @@ function safeJson<T>(value: string): T | null {
   }
 }
 
+function isAuthorizedCron(req: Request): boolean {
+  // 1) Vercel Cron header (when present)
+  const xVercelCron = req.headers.get("x-vercel-cron");
+  if (xVercelCron === "1") return true;
+
+  // 2) Vercel Cron user-agent (reliable signal)
+  const ua = (req.headers.get("user-agent") ?? "").toLowerCase();
+  if (ua.includes("vercel-cron")) return true;
+
+  // 3) Manual auth via CRON_SECRET bearer
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = req.headers.get("authorization");
+  if (cronSecret && authHeader === `Bearer ${cronSecret}`) return true;
+
+  // 4) Manual auth via Vercel protection bypass secret (same secret you already use)
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  const bypassHeader = req.headers.get("x-vercel-protection-bypass");
+  if (bypassSecret && bypassHeader === bypassSecret) return true;
+
+  return false;
+}
+
 export async function POST(req: Request) {
   let lastStep = "[CRON_DIAG][scheduled][00] Init";
   try {
     lastStep = "[CRON_DIAG][scheduled][01] Enter handler";
     console.error(lastStep);
-    const isVercelCron = req.headers.get("x-vercel-cron") === "1";
-    const cronSecret = process.env.CRON_SECRET;
-    const authHeader = req.headers.get("authorization");
 
-    if (!isVercelCron && (!cronSecret || authHeader !== `Bearer ${cronSecret}`)) {
+    if (!isAuthorizedCron(req)) {
       return deny(req, "Unauthorized cron request", 401);
     }
 
@@ -63,15 +82,24 @@ export async function POST(req: Request) {
 
     lastStep = "[CRON_DIAG][scheduled][05] fetch /api/scrape/run START";
     console.error(lastStep, { url: `${origin}/api/scrape/run` });
-    console.error("[CRON_DIAG][scheduled][AUTH] header_will_be_set", {
-      has_token: !!scrapeAdminToken,
-    });
+
+    const vercelAutomationBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+
+    const runHeaders: Record<string, string> = {
+      "content-type": "application/json",
+      "x-admin-token": scrapeAdminToken,
+    };
+
+    if (vercelAutomationBypassSecret) {
+      runHeaders["x-vercel-protection-bypass"] = vercelAutomationBypassSecret;
+      console.error("[CRON_DIAG][scheduled][AUTH] bypass_header_branch", { branch: "with_bypass" });
+    } else {
+      console.error("[CRON_DIAG][scheduled][AUTH] bypass_header_branch", { branch: "without_bypass" });
+    }
+
     const response = await fetch(`${origin}/api/scrape/run`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-admin-token": scrapeAdminToken,
-      },
+      headers: runHeaders,
       body: JSON.stringify({
         source: "greenhouse",
         mode: "live",
@@ -82,6 +110,7 @@ export async function POST(req: Request) {
 
     const responseText = await response.text();
     const payload = safeJson<ScrapeRunResponse>(responseText) ?? {};
+
     lastStep = "[CRON_DIAG][scheduled][06] fetch /api/scrape/run DONE";
     console.error(lastStep, {
       status: response.status,
@@ -101,13 +130,9 @@ export async function POST(req: Request) {
       );
     }
 
-    lastStep = "[CRON_DIAG][scheduled][07] completeIngestRun START";
-    console.error(lastStep);
-    lastStep = "[CRON_DIAG][scheduled][08] completeIngestRun DONE";
-    console.error(lastStep);
-
     lastStep = "[CRON_DIAG][scheduled][09] Return OK";
     console.error(lastStep);
+
     return NextResponse.json({
       ok: true,
       ingest_run_id: payload.ingest_run_id,
@@ -127,6 +152,7 @@ export async function POST(req: Request) {
     console.error("[CRON_DIAG][scheduled][ERR] message", message);
     console.error("[CRON_DIAG][scheduled][ERR] stack", stack);
     console.error("[CRON_DIAG][scheduled][ERR] cause", cause);
+
     if (
       typeof supabaseLike.code === "string" ||
       typeof supabaseLike.details === "string" ||
