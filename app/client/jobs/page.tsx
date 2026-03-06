@@ -1,6 +1,6 @@
 export default async function JobsPage() {
   const res = await fetch(
-    `${process.env.NEXT_PUBLIC_BASE_URL}/api/client/jobs`,
+    `/api/client/jobs`,
     { cache: "no-store" }
   );
 
