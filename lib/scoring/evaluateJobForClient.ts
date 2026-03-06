@@ -1,3 +1,5 @@
+export const JOB_ASSIGNMENT_THRESHOLD = 40;
+
 function locationCompatibility(job: any, profile: any) {
   const jobRemoteType = String(job?.remote_type ?? "").toLowerCase();
   const jobLocation = String(job?.location ?? "").toLowerCase();

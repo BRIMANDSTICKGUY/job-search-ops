@@ -19,6 +19,7 @@ type NormalizedJob = {
   company: string;
   location: string | null;
   link: string | null;
+  remote_type?: string | null;
   source_type: IngestionSource["source_type"];
   source_url: string | null;
   raw_payload: unknown;
