@@ -1,8 +1,7 @@
 export default async function JobsPage() {
-  const res = await fetch(
-    `/api/client/jobs`,
-    { cache: "no-store" }
-  );
+  const res = await fetch("/api/client/jobs", {
+    cache: "no-store",
+  });
 
   const data = await res.json();
   const jobs = data.jobs ?? [];
@@ -18,7 +17,7 @@ export default async function JobsPage() {
       )}
 
       {jobs.length > 0 && (
-        <table border="1" cellPadding="10" style={{ borderCollapse: "collapse" }}>
+        <table border={1} cellPadding={10} style={{ borderCollapse: "collapse" }}>
           <thead>
             <tr>
               <th>Job Title</th>
