@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { JobSourceType } from "@/app/types";
+import { evaluateJobForClient, JOB_ASSIGNMENT_THRESHOLD } from "@/lib/scoring/evaluateJobForClient";
 
 type IngestionSource = {
   id: string;
@@ -327,6 +328,20 @@ export async function POST(req: Request) {
 
     for (const source of sources as any[]) {
       try {
+        const { data: profiles, error: profilesError } = await supabase
+          .from("client_job_profiles")
+          .select("*")
+          .eq("client_id", source.client_id);
+
+        if (profilesError) {
+          console.error("[INGEST][profiles][ERROR]", profilesError);
+          continue;
+        }
+
+        if (!profiles || profiles.length === 0) {
+          continue;
+        }
+
         const normalized = await fetchJobsForSource(source, fetchErrors);
         const links = normalized.map((j) => j.link).filter(Boolean) as string[];
         const existing = await fetchExistingLinks(supabase, links);
@@ -340,15 +355,51 @@ export async function POST(req: Request) {
               title: job.title,
               company: job.company,
               link: job.link,
-              location: job.location,
-              lane: "INBOX",
-              status: "new",
-              client_id: source.client_id,
+              location: job.location ?? null,
+              remote_type: job.remote_type ?? "unknown",
+              source: source.source_type,
+              ingest_source: source.id,
+              ingested_at: new Date(),
             })
             .select("id")
             .single();
 
           if (jobErr || !jobRow) continue;
+
+          try {
+            for (const profile of profiles ?? []) {
+              const result = evaluateJobForClient(
+                {
+                  title: job.title,
+                  company: job.company,
+                },
+                profile
+              );
+
+              if (result.score >= JOB_ASSIGNMENT_THRESHOLD) {
+                const { error: assignmentError } = await supabase
+                  .from("job_assignments")
+                  .insert({
+                    job_id: jobRow.id,
+                    client_id: profile.client_id,
+                    fit_score: result.score,
+                    lane: "NEW",
+                    status: "pending",
+                  })
+                  .select()
+                  .maybeSingle();
+
+                if (assignmentError) {
+                  const maybeCode = (assignmentError as { code?: unknown }).code;
+                  if (maybeCode !== "23505") {
+                    console.error("[INGEST][scoring][assign][ERROR]", assignmentError);
+                  }
+                }
+              }
+            }
+          } catch (scoringError) {
+            console.error("[INGEST][scoring][ERROR]", scoringError);
+          }
 
           const { data: clientMapping, error: clientMappingError } = await supabase
             .from("clients")
