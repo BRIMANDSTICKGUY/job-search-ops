@@ -35,7 +35,7 @@ export default async function JobsPage() {
                 <td>{job.title}</td>
                 <td>{job.company}</td>
                 <td>{job.location}</td>
-                <td>{job.fit_score}</td>
+                <td>{Number(job.fit_score)}</td>
                 <td>{job.lane}</td>
               </tr>
             ))}
