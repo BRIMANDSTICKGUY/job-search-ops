@@ -4,8 +4,12 @@ export default async function JobsPage() {
     { cache: "no-store" }
   );
 
-  const data = await res.json();
-  const jobs = data.jobs ?? [];
+  let jobs: any[] = [];
+
+  if (res.ok) {
+    const data = await res.json();
+    jobs = data.jobs ?? [];
+  }
 
   return (
     <div style={{ padding: "40px" }}>
