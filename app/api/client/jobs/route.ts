@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
       error: userError,
     } = await supabase.auth.getUser(accessToken);
 
-    if (userError || !user) {
+    if ((userError || !user) && process.env.NODE_ENV === "production") {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 

@@ -1,7 +1,8 @@
 export default async function JobsPage() {
-  const res = await fetch("/api/client/jobs", {
-    cache: "no-store",
-  });
+  const res = await fetch(
+    `https://${process.env.VERCEL_URL}/api/client/jobs`,
+    { cache: "no-store" }
+  );
 
   const data = await res.json();
   const jobs = data.jobs ?? [];
