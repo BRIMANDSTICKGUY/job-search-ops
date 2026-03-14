@@ -1,5 +1,6 @@
 export const runtime = "nodejs";
 
+import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { JobSourceType } from "@/app/types";
@@ -350,9 +351,15 @@ export async function POST(req: Request) {
         for (const job of normalized) {
           if (job.link && existing.has(job.link)) continue;
 
+          const jobId = crypto
+            .createHash("sha256")
+            .update(job.link ?? `${job.title}-${job.company}`)
+            .digest("hex");
+
           const { data: jobRow, error: jobErr } = await supabase
             .from("jobs")
             .insert({
+              id: jobId,
               title: job.title,
               company: job.company,
               link: job.link,
