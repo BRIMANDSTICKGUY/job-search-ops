@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     const { data: assignments, error: assignmentsError } = await supabase
       .from("job_assignments")
       .select("job_id")
-      .or(`client_id.eq.${user!.id},client_id_uuid.eq.${user!.id}`);
+      .eq("client_id_uuid", user!.id);
 
     if (assignmentsError) {
       return NextResponse.json(
@@ -70,46 +70,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, jobs: [] });
     }
 
-    const { data: jobsById, error: jobsByIdError } = await supabase
+    const { data: jobs, error: jobsError } = await supabase
       .from("jobs")
       .select(JOB_SELECT_FIELDS)
       .in("id", jobIds)
       .eq("is_test", false)
       .order("created_at", { ascending: false });
 
-    if (jobsByIdError) {
+    if (jobsError) {
       return NextResponse.json(
-        { ok: false, error: jobsByIdError.message || "Failed to load jobs" },
+        { ok: false, error: jobsError.message || "Failed to load jobs" },
         { status: 500 }
       );
     }
 
-    if ((jobsById ?? []).length > 0) {
-      return NextResponse.json({ ok: true, jobs: jobsById ?? [] });
-    }
-
-    const { data: jobsByJobId, error: jobsByJobIdError } = await supabase
-      .from("jobs")
-      .select(JOB_SELECT_FIELDS)
-      .in("job_id", jobIds)
-      .eq("is_test", false)
-      .order("created_at", { ascending: false });
-
-    if (jobsByJobIdError) {
-      if (
-        jobsByJobIdError.message.toLowerCase().includes("column") &&
-        jobsByJobIdError.message.includes("job_id")
-      ) {
-        return NextResponse.json({ ok: true, jobs: [] });
-      }
-
-      return NextResponse.json(
-        { ok: false, error: jobsByJobIdError.message || "Failed to load jobs" },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ ok: true, jobs: jobsByJobId ?? [] });
+    return NextResponse.json({ ok: true, jobs: jobs ?? [] });
   } catch (error) {
     return NextResponse.json(
       {
