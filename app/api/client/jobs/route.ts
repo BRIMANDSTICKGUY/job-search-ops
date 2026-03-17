@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
     const { data: jobs, error: jobsError } = await supabase
       .from("jobs")
       .select(JOB_SELECT_FIELDS)
-      .in("id", jobIds)
+      .in("job_id", jobIds)
       .eq("is_test", false)
       .order("created_at", { ascending: false });
 
