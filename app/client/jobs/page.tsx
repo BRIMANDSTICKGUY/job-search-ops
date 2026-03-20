@@ -35,7 +35,18 @@ export default function JobsPage() {
       try {
         const {
           data: { session },
+          error: sessionError,
         } = await getSupabaseBrowser().auth.getSession();
+
+        console.log("[client/jobs page] SESSION ERROR:", sessionError ?? null);
+        console.log("[client/jobs page] SESSION EXISTS:", !!session);
+        console.log("[client/jobs page] ACCESS TOKEN EXISTS:", !!session?.access_token);
+        console.log(
+          "[client/jobs page] ACCESS TOKEN MASKED:",
+          session?.access_token
+            ? `${session.access_token.slice(0, 12)}...${session.access_token.slice(-8)}`
+            : null
+        );
 
         const accessToken = session?.access_token;
         if (!accessToken) {
@@ -51,7 +62,13 @@ export default function JobsPage() {
           cache: "no-store",
         });
 
-        const data = (await res.json()) as ClientJobsResponse;
+        const data = (await res.json()) as ClientJobsResponse & {
+          stage?: string;
+          details?: { message?: string | null; status?: number | null };
+        };
+
+        console.log("[client/jobs page] API STATUS:", res.status);
+        console.log("[client/jobs page] API PAYLOAD:", data);
 
         if (!res.ok || !data.ok) {
           if (!active) return;

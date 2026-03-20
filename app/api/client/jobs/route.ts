@@ -15,6 +15,12 @@ function parseBearerToken(authorization: string | null): string {
   return authorization.slice("Bearer ".length).trim();
 }
 
+function maskToken(token: string) {
+  if (!token) return "";
+  if (token.length <= 20) return token;
+  return `${token.slice(0, 12)}...${token.slice(-8)}`;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -27,10 +33,24 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const accessToken = parseBearerToken(req.headers.get("authorization"));
+    const rawAuthorization = req.headers.get("authorization");
+    const accessToken = parseBearerToken(rawAuthorization);
+
+    console.log("[client/jobs] AUTH HEADER PRESENT:", !!rawAuthorization);
+    console.log("[client/jobs] AUTH HEADER PREFIX:", rawAuthorization?.slice(0, 20) ?? null);
+    console.log("[client/jobs] TOKEN PRESENT:", !!accessToken);
+    console.log("[client/jobs] TOKEN LENGTH:", accessToken.length);
+    console.log("[client/jobs] TOKEN MASKED:", maskToken(accessToken));
 
     if (!accessToken) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        {
+          ok: false,
+          stage: "missing_token",
+          error: "Unauthorized",
+        },
+        { status: 401 }
+      );
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -42,18 +62,38 @@ export async function GET(req: NextRequest) {
       error: userError,
     } = await supabase.auth.getUser(accessToken);
 
-    if ((userError || !user) && process.env.NODE_ENV === "production") {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    console.log("[client/jobs] GET USER ERROR MESSAGE:", userError?.message ?? null);
+    console.log("[client/jobs] GET USER ERROR STATUS:", userError?.status ?? null);
+    console.log("[client/jobs] GET USER ID:", user?.id ?? null);
+    console.log("[client/jobs] NODE_ENV:", process.env.NODE_ENV);
+
+    if (userError || !user) {
+      return NextResponse.json(
+        {
+          ok: false,
+          stage: "token_rejected",
+          error: "Unauthorized",
+          details: {
+            message: userError?.message ?? null,
+            status: userError?.status ?? null,
+          },
+        },
+        { status: 401 }
+      );
     }
 
     const { data: assignments, error: assignmentsError } = await supabase
       .from("job_assignments")
       .select("job_id")
-      .eq("client_id_uuid", user!.id);
+      .eq("client_id_uuid", user.id);
 
     if (assignmentsError) {
       return NextResponse.json(
-        { ok: false, error: assignmentsError.message || "Failed to load assignments" },
+        {
+          ok: false,
+          stage: "assignments_query_failed",
+          error: assignmentsError.message || "Failed to load assignments",
+        },
         { status: 500 }
       );
     }
@@ -79,7 +119,11 @@ export async function GET(req: NextRequest) {
 
     if (jobsError) {
       return NextResponse.json(
-        { ok: false, error: jobsError.message || "Failed to load jobs" },
+        {
+          ok: false,
+          stage: "jobs_query_failed",
+          error: jobsError.message || "Failed to load jobs",
+        },
         { status: 500 }
       );
     }
@@ -89,6 +133,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
+        stage: "unexpected_server_error",
         error: error instanceof Error ? error.message : "Unexpected server error",
       },
       { status: 500 }
