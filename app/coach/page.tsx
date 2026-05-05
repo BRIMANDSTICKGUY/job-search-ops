@@ -37,14 +37,8 @@ type IngestRun = {
   error_message: string | null;
 };
 
-type AssignedJobRow = {
-  job: {
-    id: string;
-    title: string;
-    company: string;
-    lane: string;
-    client_status: string | null;
-  };
+type JobAssignmentRow = {
+  job_id: string;
 };
 
 type CoachPageProps = {
@@ -87,14 +81,26 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
     );
   }
 
-  const { data: assignedJobs, error } = await supabase
+  const { data: assignedJobRows, error } = await supabase
     .from("job_assignments")
-    .select("job:jobs(id, title, company, lane, client_status)")
-    .eq("job.is_test", false);
+    .select("job_id");
 
-  const { data: unassignedJobs, error: unassignedJobsError } = await supabase
-    .from("unassigned_jobs")
-    .select("id, title, company, link");
+  const assignedJobIdList = Array.from(
+    new Set(((assignedJobRows ?? []) as JobAssignmentRow[]).map((row) => row.job_id).filter(Boolean))
+  );
+
+  const { data: assignedJobs, error: assignedJobsError } = assignedJobIdList.length
+    ? await supabase
+        .from("jobs")
+        .select("id, title, company, lane, client_status")
+        .in("id", assignedJobIdList)
+        .eq("is_test", false)
+    : { data: [], error: null };
+
+  const { data: allJobs, error: allJobsError } = await supabase
+    .from("jobs")
+    .select("id, title, company, link")
+    .eq("is_test", false);
 
   const { data: clients, error: clientsError } = await supabase
     .from("clients")
@@ -107,35 +113,31 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
     .order("started_at", { ascending: false })
     .limit(20);
 
-  if (error || unassignedJobsError || clientsError || ingestRunsError) {
-    // Guard exists only to avoid local dev crashes; production should still surface errors in logs/monitoring.
-    console.error("Coach dashboard query failed", {
+  const coachQueryErrorMessage =
+    error?.message ??
+    assignedJobsError?.message ??
+    allJobsError?.message ??
+    clientsError?.message ??
+    ingestRunsError?.message ??
+    null;
+
+  if (coachQueryErrorMessage) {
+    // Local dev should keep the page usable even if some Supabase-backed queries fail.
+    console.warn("Coach dashboard query failed", {
       jobsError: error,
-      unassignedJobsError,
+      unassignedJobsError: allJobsError,
       clientsError,
       ingestRunsError,
     });
-    return (
-      <main style={{ padding: "24px" }}>
-        <h1>Coach dashboard unavailable (local)</h1>
-        <p>
-          {error?.message ??
-            unassignedJobsError?.message ??
-            clientsError?.message ??
-            ingestRunsError?.message}
-        </p>
-        <p>Check your `.env.local` Supabase credentials.</p>
-      </main>
-    );
   }
 
-  const typedJobs: CoachJob[] = ((assignedJobs ?? []) as AssignedJobRow[]).map(
-    (row) => row.job
+  const typedJobs: CoachJob[] = (assignedJobs ?? []) as CoachJob[];
+  const assignedJobIds = new Set(typedJobs.map((job) => job.id));
+  const typedUnassignedJobs = ((allJobs ?? []) as UnassignedJob[]).filter(
+    (job) => !assignedJobIds.has(job.id)
   );
-  const typedUnassignedJobs = (unassignedJobs ?? []) as UnassignedJob[];
   const typedClients = (clients ?? []) as CoachClient[];
   const typedIngestRuns = (ingestRuns ?? []) as IngestRun[];
-  const assignedJobIds = new Set(typedJobs.map((job) => job.id));
   const isIntakeJob = (jobId: string) => !assignedJobIds.has(jobId);
   const existingJobKeys = [
     ...typedJobs.map((job) => ({
@@ -206,6 +208,21 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
   return (
     <main style={{ padding: "24px" }}>
       <h1>Coach Dashboard</h1>
+
+      {coachQueryErrorMessage ? (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: 12,
+            border: "1px solid #f59e0b",
+            background: "#fffbeb",
+            color: "#92400e",
+            borderRadius: 8,
+          }}
+        >
+          <strong>Local data warning:</strong> {coachQueryErrorMessage}
+        </div>
+      ) : null}
 
       <section style={{ marginBottom: 32 }}>
         <h2>Manual Intake</h2>
