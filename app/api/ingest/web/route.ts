@@ -53,10 +53,70 @@ function extractCompanySlug(baseUrl: string | null): string | null {
     }
     if (url.hostname.includes("lever.co")) return parts[0] ?? null;
     if (url.hostname.includes("ashbyhq.com")) return parts[0] ?? null;
+    if (url.hostname.includes("smartrecruiters.com")) {
+      const companyIndex = parts.findIndex((part) => part === "company");
+      if (companyIndex >= 0 && parts[companyIndex + 1]) return parts[companyIndex + 1];
+      return parts[0] ?? null;
+    }
     return parts[0] ?? null;
   } catch {
     return null;
   }
+}
+
+function buildWorkdayApiUrl(baseUrl: string | null): string | null {
+  if (!baseUrl) return null;
+
+  try {
+    const url = new URL(baseUrl);
+    const parts = url.pathname.split("/").filter(Boolean);
+
+    const cxsIndex = parts.findIndex((part) => part === "cxs");
+    if (cxsIndex > 0 && parts[cxsIndex - 1] === "wday" && parts[cxsIndex + 1] && parts[cxsIndex + 2]) {
+      return `${url.origin}/wday/cxs/${parts[cxsIndex + 1]}/${parts[cxsIndex + 2]}/jobs`;
+    }
+
+    const recruitingIndex = parts.findIndex((part) => part === "recruiting");
+    if (recruitingIndex >= 0 && parts[recruitingIndex + 1] && parts[recruitingIndex + 2]) {
+      return `${url.origin}/wday/cxs/${parts[recruitingIndex + 1]}/${parts[recruitingIndex + 2]}/jobs`;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function buildWorkdayJobUrl(baseUrl: string | null, externalPath: string | null | undefined): string | null {
+  if (!externalPath) return null;
+
+  try {
+    const url = new URL(baseUrl ?? "");
+    return new URL(externalPath, url.origin).toString();
+  } catch {
+    return externalPath;
+  }
+}
+
+function formatSmartRecruitersLocation(location: unknown): string | null {
+  if (!location || typeof location !== "object") return null;
+
+  const typedLocation = location as {
+    city?: unknown;
+    region?: unknown;
+    country?: unknown;
+    remote?: unknown;
+  };
+
+  const parts = [typedLocation.city, typedLocation.region, typedLocation.country]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim());
+
+  if (typedLocation.remote === true) {
+    parts.unshift("Remote");
+  }
+
+  return parts.length > 0 ? parts.join(", ") : null;
 }
 
 function companyFromSource(source: IngestionSource): string {
@@ -251,6 +311,184 @@ async function fetchAshby(
   }));
 }
 
+async function fetchWorkday(
+  source: IngestionSource,
+  fetchErrors: FetchError[]
+): Promise<NormalizedJob[]> {
+  const sourceUrl = source.base_url;
+  if (!isValidSourceUrl(sourceUrl)) return [];
+
+  const apiUrl = buildWorkdayApiUrl(sourceUrl);
+  if (!apiUrl) return [];
+
+  const company = companyFromSource(source);
+  const jobs: NormalizedJob[] = [];
+  let offset = 0;
+  const limit = 20;
+  const maxPages = 10;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15_000);
+
+    try {
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "user-agent": "JobSearchOpsBot/1.0",
+          accept: "application/json,text/html,*/*",
+        },
+        body: JSON.stringify({ appliedFacets: {}, limit, offset, searchText: "" }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const message = `Failed to fetch from Workday: ${res.status} ${res.statusText}`;
+        console.error("Fetch failed", {
+          source_type: "workday",
+          source_url: sourceUrl,
+          message,
+        });
+        fetchErrors.push({
+          source_type: "workday",
+          source_url: sourceUrl,
+          message,
+        });
+        return jobs;
+      }
+
+      const data = (await res.json()) as {
+        jobPostings?: Array<{
+          title?: unknown;
+          locationsText?: unknown;
+          externalPath?: unknown;
+          bulletFields?: Array<{ label?: unknown; value?: unknown }>;
+        }>;
+        total?: unknown;
+      };
+
+      const postings = Array.isArray(data.jobPostings) ? data.jobPostings : [];
+      for (const posting of postings) {
+        const remoteField = Array.isArray(posting.bulletFields)
+          ? posting.bulletFields.find((field) =>
+              typeof field?.label === "string" && field.label.toLowerCase().includes("remote")
+            )
+          : undefined;
+
+        jobs.push({
+          title: typeof posting.title === "string" ? posting.title : "",
+          company,
+          location: typeof posting.locationsText === "string" ? posting.locationsText : null,
+          link: buildWorkdayJobUrl(
+            sourceUrl,
+            typeof posting.externalPath === "string" ? posting.externalPath : null
+          ),
+          remote_type: typeof remoteField?.value === "string" ? remoteField.value : null,
+          source_type: "workday",
+          source_url: sourceUrl,
+          raw_payload: posting,
+        });
+      }
+
+      if (postings.length < limit) break;
+      offset += postings.length;
+    } catch (error: unknown) {
+      const message = serializeIngestError(error) || "Fetch failed";
+      console.error("Fetch failed", {
+        source_type: "workday",
+        source_url: sourceUrl,
+        message,
+      });
+      fetchErrors.push({
+        source_type: "workday",
+        source_url: sourceUrl,
+        message,
+      });
+      return jobs;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  return jobs;
+}
+
+async function fetchSmartRecruiters(
+  source: IngestionSource,
+  fetchErrors: FetchError[]
+): Promise<NormalizedJob[]> {
+  const sourceUrl = source.base_url;
+  if (!isValidSourceUrl(sourceUrl)) return [];
+
+  const slug = extractCompanySlug(sourceUrl);
+  if (!slug) return [];
+
+  const apiUrl = `https://api.smartrecruiters.com/v1/companies/${slug}/postings?limit=100&offset=0`;
+  const result = await hardenedFetch(apiUrl);
+  if (!result.ok) {
+    const message = result.errorMessage;
+    console.error("Fetch failed", {
+      source_type: "smartrecruiters",
+      source_url: sourceUrl,
+      message,
+    });
+    fetchErrors.push({
+      source_type: "smartrecruiters",
+      source_url: sourceUrl,
+      message,
+    });
+    return [];
+  }
+
+  if (!result.res.ok) {
+    const message = `Failed to fetch from SmartRecruiters: ${result.res.status} ${result.res.statusText}`;
+    console.error("Fetch failed", {
+      source_type: "smartrecruiters",
+      source_url: sourceUrl,
+      message,
+    });
+    fetchErrors.push({
+      source_type: "smartrecruiters",
+      source_url: sourceUrl,
+      message,
+    });
+    return [];
+  }
+
+  const data = (await result.res.json()) as {
+    content?: Array<{
+      id?: unknown;
+      name?: unknown;
+      location?: unknown;
+      ref?: unknown;
+      releasedDate?: unknown;
+    }>;
+  };
+
+  const company = companyFromSource(source);
+  const jobs = Array.isArray(data.content) ? data.content : [];
+  return jobs.map((job) => {
+    const jobId = typeof job.id === "string" ? job.id : null;
+    const ref = typeof job.ref === "string" ? job.ref : null;
+    const link = ref
+      ? ref
+      : jobId
+        ? `https://jobs.smartrecruiters.com/${slug}/${jobId}`
+        : null;
+
+    return {
+      title: typeof job.name === "string" ? job.name : "",
+      company,
+      location: formatSmartRecruitersLocation(job.location),
+      link,
+      source_type: "smartrecruiters",
+      source_url: sourceUrl,
+      raw_payload: job,
+    };
+  });
+}
+
 async function fetchJobsForSource(
   source: IngestionSource,
   fetchErrors: FetchError[]
@@ -262,6 +500,10 @@ async function fetchJobsForSource(
       return fetchLever(source, fetchErrors);
     case "ashby":
       return fetchAshby(source, fetchErrors);
+    case "workday":
+      return fetchWorkday(source, fetchErrors);
+    case "smartrecruiters":
+      return fetchSmartRecruiters(source, fetchErrors);
     default:
       return [];
   }

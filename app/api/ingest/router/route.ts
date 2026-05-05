@@ -20,12 +20,14 @@ type RouterIngestBody = {
 };
 
 type CreatedByRole = "coach" | "client" | "system";
-const ALLOWED_SOURCES = ["manual", "greenhouse", "lever", "ashby"] as const;
+const ALLOWED_SOURCES = ["manual", "greenhouse", "lever", "ashby", "workday", "smartrecruiters"] as const;
 const SOURCE_LIMITS = {
   manual: { per_minute: 20, per_hour: 200 },
   greenhouse: { per_minute: 60, per_hour: 1000 },
   lever: { per_minute: 60, per_hour: 1000 },
   ashby: { per_minute: 60, per_hour: 1000 },
+  workday: { per_minute: 60, per_hour: 1000 },
+  smartrecruiters: { per_minute: 60, per_hour: 1000 },
 } as const;
 
 function errorResponse(message: string, status = 400) {
