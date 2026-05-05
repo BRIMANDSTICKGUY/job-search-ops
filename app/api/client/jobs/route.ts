@@ -7,7 +7,24 @@ type AssignmentRow = {
   job_id: string | null;
 };
 
-const JOB_SELECT_FIELDS = "id, title, company, source, created_at, client_status, link";
+type ClientJobActionRow = {
+  job_id: string | null;
+  action: string | null;
+  created_at: string | null;
+};
+
+type ClientJobRow = {
+  id: string;
+  title: string | null;
+  company: string | null;
+  location: string | null;
+  source: string | null;
+  created_at: string | null;
+  client_status?: string | null;
+  link: string | null;
+};
+
+const JOB_SELECT_FIELDS = "id, title, company, location, source, created_at, client_status, link";
 
 function parseBearerToken(authorization: string | null): string {
   if (!authorization) return "";
@@ -42,7 +59,7 @@ export async function GET(req: NextRequest) {
       error: userError,
     } = await supabase.auth.getUser(accessToken);
 
-    if ((userError || !user) && process.env.NODE_ENV === "production") {
+    if (userError || !user) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
@@ -73,7 +90,7 @@ export async function GET(req: NextRequest) {
     const { data: jobs, error: jobsError } = await supabase
       .from("jobs")
       .select(JOB_SELECT_FIELDS)
-      .in("job_id", jobIds)
+      .in("id", jobIds)
       .eq("is_test", false)
       .order("created_at", { ascending: false });
 
@@ -84,7 +101,36 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ ok: true, jobs: jobs ?? [] });
+    const { data: actionRows, error: actionsError } = await supabase
+      .from("client_job_actions")
+      .select("job_id, action, created_at")
+      .eq("client_id", user.id)
+      .in("job_id", jobIds)
+      .order("created_at", { ascending: false });
+
+    if (actionsError) {
+      return NextResponse.json(
+        { ok: false, error: actionsError.message || "Failed to load client job status" },
+        { status: 500 }
+      );
+    }
+
+    const latestActionByJobId = new Map<string, string>();
+    for (const row of (actionRows ?? []) as ClientJobActionRow[]) {
+      const jobId = (row.job_id ?? "").trim();
+      const action = (row.action ?? "").trim();
+      if (!jobId || !action || latestActionByJobId.has(jobId)) continue;
+      latestActionByJobId.set(jobId, action);
+    }
+
+    const filteredJobs = ((jobs ?? []) as ClientJobRow[])
+      .filter((job) => jobIds.includes(String(job.id).trim()))
+      .map((job) => ({
+        ...job,
+        client_status: latestActionByJobId.get(String(job.id).trim()) ?? job.client_status ?? "new",
+      }));
+
+    return NextResponse.json({ ok: true, jobs: filteredJobs });
   } catch (error) {
     return NextResponse.json(
       {

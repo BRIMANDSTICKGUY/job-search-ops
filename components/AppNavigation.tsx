@@ -84,10 +84,9 @@ const navButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const routes = [
+const baseRoutes = [
   { href: "/", label: "Board" },
   { href: "/coach", label: "Coach" },
-  { href: "/client", label: "Client" },
 ] as const;
 
 function clearAuthCookies() {
@@ -100,6 +99,7 @@ export function AppNavigation() {
   const router = useRouter();
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const routes = sessionEmail ? [...baseRoutes, { href: "/client", label: "Client" }] : baseRoutes;
 
   useEffect(() => {
     if (!hasSupabaseBrowserEnv()) return;

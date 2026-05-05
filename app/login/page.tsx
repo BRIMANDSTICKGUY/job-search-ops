@@ -3,8 +3,9 @@
 import { FormEvent, useEffect, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
-const RESEND_COOLDOWN_SECONDS = 60;
-const LAST_SENT_STORAGE_KEY = "job-search-ops:last-magic-link-sent-at";
+const SUCCESS_COOLDOWN_SECONDS = 90;
+const RATE_LIMIT_BACKOFF_SECONDS = 180;
+const RETRY_AFTER_STORAGE_KEY = "job-search-ops:magic-link-retry-after";
 
 const shellStyle: React.CSSProperties = {
   minHeight: "100vh",
@@ -49,15 +50,25 @@ const buttonStyle: React.CSSProperties = {
   boxShadow: "0 18px 32px rgba(29, 78, 216, 0.22)",
 };
 
+function setCooldown(seconds: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(RETRY_AFTER_STORAGE_KEY, String(Date.now() + seconds * 1000));
+}
+
 function getRemainingCooldownSeconds() {
   if (typeof window === "undefined") return 0;
 
-  const storedValue = window.localStorage.getItem(LAST_SENT_STORAGE_KEY);
-  const lastSentAt = storedValue ? Number.parseInt(storedValue, 10) : 0;
-  if (!Number.isFinite(lastSentAt) || lastSentAt <= 0) return 0;
+  const storedValue = window.localStorage.getItem(RETRY_AFTER_STORAGE_KEY);
+  const retryAfter = storedValue ? Number.parseInt(storedValue, 10) : 0;
+  if (!Number.isFinite(retryAfter) || retryAfter <= 0) return 0;
 
-  const elapsedSeconds = Math.floor((Date.now() - lastSentAt) / 1000);
-  return Math.max(0, RESEND_COOLDOWN_SECONDS - elapsedSeconds);
+  const remainingSeconds = Math.ceil((retryAfter - Date.now()) / 1000);
+  if (remainingSeconds <= 0) {
+    window.localStorage.removeItem(RETRY_AFTER_STORAGE_KEY);
+    return 0;
+  }
+
+  return remainingSeconds;
 }
 
 export default function LoginPage() {
@@ -111,9 +122,9 @@ export default function LoginPage() {
       if (signInError) {
         const normalizedMessage = signInError.message.toLowerCase();
         if (normalizedMessage.includes("rate limit")) {
-          setCooldownSeconds(RESEND_COOLDOWN_SECONDS);
-          window.localStorage.setItem(LAST_SENT_STORAGE_KEY, String(Date.now()));
-          setError("Email rate limit reached. Wait a minute, then request a new magic link.");
+          setCooldown(RATE_LIMIT_BACKOFF_SECONDS);
+          setCooldownSeconds(RATE_LIMIT_BACKOFF_SECONDS);
+          setError("Email rate limit reached. Wait a few minutes, then request a new magic link.");
           return;
         }
 
@@ -121,8 +132,8 @@ export default function LoginPage() {
         return;
       }
 
-      window.localStorage.setItem(LAST_SENT_STORAGE_KEY, String(Date.now()));
-      setCooldownSeconds(RESEND_COOLDOWN_SECONDS);
+      setCooldown(SUCCESS_COOLDOWN_SECONDS);
+      setCooldownSeconds(SUCCESS_COOLDOWN_SECONDS);
       setSent(true);
     } catch {
       setError("Failed to send magic link");
