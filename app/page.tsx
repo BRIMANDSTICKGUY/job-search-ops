@@ -19,6 +19,19 @@ import { JobMatchesTable } from "@/components/JobMatchesTable";
 
 const UPPER_LANES: UpperLaneId[] = ["INBOX", "VERIFIED", "CLIENT-SENT", "WATCHLIST", "REJECTED"];
 
+const selectInputStyle: React.CSSProperties = {
+  minHeight: 30,
+  border: "1px solid #bbb",
+  borderRadius: 8,
+  background: "#fff",
+  color: "#0f172a",
+  padding: "4px 8px",
+  fontSize: 13,
+  lineHeight: 1.2,
+  fontWeight: 500,
+  boxSizing: "border-box",
+};
+
 function now() {
   return Date.now();
 }
@@ -647,7 +660,7 @@ export default function Page() {
             onChange={(e) => handleImportFile(e.target.files?.[0] ?? null)}
           />
 
-          <select value={state.mode} onChange={(e) => setMode(e.target.value as Mode)} title="Mode">
+          <select value={state.mode} onChange={(e) => setMode(e.target.value as Mode)} title="Mode" style={selectInputStyle}>
             <option value="coach">Coach (Operator)</option>
             <option value="client">Client (preview)</option>
           </select>
@@ -656,6 +669,7 @@ export default function Page() {
             value={state.selectedClientId ?? ""}
             onChange={(e) => setState((s) => ({ ...s, selectedClientId: e.target.value || undefined }))}
             title="Client"
+            style={selectInputStyle}
           >
             <option value="">All clients</option>
             {state.clients.map((c) => (
@@ -677,7 +691,7 @@ export default function Page() {
           style={{ flex: "1 1 320px", padding: "6px 8px" }}
         />
 
-        <select value={sortMode} onChange={(e) => setSortMode(e.target.value as any)} title="Sort">
+        <select value={sortMode} onChange={(e) => setSortMode(e.target.value as any)} title="Sort" style={selectInputStyle}>
           <option value="movedNewest">Sort: moved newest</option>
           <option value="createdNewest">Sort: created newest</option>
         </select>
@@ -801,7 +815,7 @@ export default function Page() {
 
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               <label style={{ fontSize: 12, opacity: 0.85 }}>Move →</label>
-              <select value={bulkMoveTarget} onChange={(e) => setBulkMoveTarget(e.target.value as UpperLaneId)}>
+              <select value={bulkMoveTarget} onChange={(e) => setBulkMoveTarget(e.target.value as UpperLaneId)} style={selectInputStyle}>
                 {UPPER_LANES.filter((l) => l !== activeUpper).map((l) => (
                   <option key={l} value={l}>
                     {l}
@@ -815,7 +829,7 @@ export default function Page() {
 
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               <label style={{ fontSize: 12, opacity: 0.85 }}>Bulk assign: add client…</label>
-              <select value={bulkAssignClientId} onChange={(e) => setBulkAssignClientId(e.target.value)}>
+              <select value={bulkAssignClientId} onChange={(e) => setBulkAssignClientId(e.target.value)} style={selectInputStyle}>
                 <option value="">Assign to client…</option>
                 {state.clients.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -955,10 +969,10 @@ function JobCard(props: {
       : "—";
 
   return (
-    <div style={{ border: "1px solid #999", marginTop: 10 }}>
+    <div style={{ border: "1px solid #999", marginTop: 10, minWidth: 0, overflowX: "hidden" }}>
       <div style={{ padding: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ minWidth: 260 }}>
+          <div style={{ minWidth: 0, flex: "1 1 260px", overflowWrap: "anywhere" }}>
             {mode === "coach" && (
               <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <input type="checkbox" checked={selected} onChange={(e) => props.onToggleSelected(e.target.checked)} />
@@ -989,7 +1003,7 @@ function JobCard(props: {
             <div style={{ fontSize: 12, opacity: 0.8 }}>{new Date(job.movedAt).toLocaleString()}</div>
 
             {mode === "coach" && (
-              <select value={upperLane} onChange={(e) => props.onMove(e.target.value as UpperLaneId)} title="Move">
+              <select value={upperLane} onChange={(e) => props.onMove(e.target.value as UpperLaneId)} title="Move" style={selectInputStyle}>
                 {UPPER_LANES.map((l) => (
                   <option key={l} value={l}>
                     {l}
@@ -1030,7 +1044,7 @@ function JobCard(props: {
                 </span>
               ))}
 
-              <select value={assignPick} onChange={(e) => setAssignPick(e.target.value)}>
+              <select value={assignPick} onChange={(e) => setAssignPick(e.target.value)} style={selectInputStyle}>
                 <option value="">Assign client…</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -1057,7 +1071,7 @@ function JobCard(props: {
           <div style={{ marginTop: 8 }}>
             <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Send to Client</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <select value={sendPick} onChange={(e) => setSendPick(e.target.value)}>
+              <select value={sendPick} onChange={(e) => setSendPick(e.target.value)} style={selectInputStyle}>
                 <option value="">Select client…</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -1079,13 +1093,13 @@ function JobCard(props: {
           </div>
         )}
 
-        <div style={{ marginTop: 10 }}>
+        <div style={{ marginTop: 10, minWidth: 0 }}>
           <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Client Notes (client-safe)</div>
           <textarea
             value={job.clientNotes}
             onChange={(e) => props.onChangeClientNotes(e.target.value)}
             rows={2}
-            style={{ width: "100%", padding: 8 }}
+            style={{ display: "block", width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: 8, resize: "vertical" }}
             readOnly={mode === "client"}
           />
         </div>
@@ -1109,6 +1123,7 @@ function JobCard(props: {
                   (e.target.value || null) as Job["outcome_status"]
                 )
               }
+              style={selectInputStyle}
             >
               <option value="">Select…</option>
               <option value="interview">Interview</option>
@@ -1120,9 +1135,14 @@ function JobCard(props: {
         )}
 
         {mode === "coach" && (
-          <div style={{ marginTop: 10 }}>
+          <div style={{ marginTop: 10, minWidth: 0 }}>
             <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Internal Notes (coach-only)</div>
-            <textarea value={job.internalNotes} onChange={(e) => props.onChangeInternalNotes(e.target.value)} rows={2} style={{ width: "100%", padding: 8 }} />
+            <textarea
+              value={job.internalNotes}
+              onChange={(e) => props.onChangeInternalNotes(e.target.value)}
+              rows={2}
+              style={{ display: "block", width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: 8, resize: "vertical" }}
+            />
           </div>
         )}
       </div>
