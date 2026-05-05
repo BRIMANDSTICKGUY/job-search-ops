@@ -19,6 +19,137 @@ import { JobMatchesTable } from "@/components/JobMatchesTable";
 
 const UPPER_LANES: UpperLaneId[] = ["INBOX", "VERIFIED", "CLIENT-SENT", "WATCHLIST", "REJECTED"];
 
+const shellStyle: React.CSSProperties = {
+  minHeight: "100vh",
+  background: "linear-gradient(180deg, #f4f7fb 0%, #eef3f8 100%)",
+  padding: "32px 24px 64px",
+  color: "#0f172a",
+};
+
+const containerStyle: React.CSSProperties = {
+  maxWidth: 1180,
+  margin: "0 auto",
+  fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif",
+};
+
+const cardStyle: React.CSSProperties = {
+  background: "#ffffff",
+  border: "1px solid #dbe4f0",
+  borderRadius: 20,
+  boxShadow: "0 16px 40px rgba(15, 23, 42, 0.06)",
+  padding: 24,
+};
+
+const heroCardStyle: React.CSSProperties = {
+  ...cardStyle,
+  marginBottom: 20,
+  background: "linear-gradient(135deg, #ffffff 0%, #f6f9fc 62%, #eef6ff 100%)",
+};
+
+const sectionTitleStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: 22,
+  fontWeight: 700,
+  letterSpacing: "-0.02em",
+};
+
+const mutedTextStyle: React.CSSProperties = {
+  margin: 0,
+  color: "#526071",
+  fontSize: 14,
+  lineHeight: 1.5,
+};
+
+const sectionEyebrowStyle: React.CSSProperties = {
+  margin: "0 0 8px",
+  color: "#64748b",
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+};
+
+const utilityGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+  gap: 16,
+  marginBottom: 20,
+};
+
+const utilityPanelStyle: React.CSSProperties = {
+  ...cardStyle,
+  padding: 20,
+};
+
+const textInputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "11px 13px",
+  borderRadius: 12,
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  fontSize: 14,
+  color: "#0f172a",
+  boxSizing: "border-box",
+};
+
+const primaryButtonStyle: React.CSSProperties = {
+  border: "none",
+  borderRadius: 12,
+  background: "#0f172a",
+  color: "#fff",
+  padding: "11px 16px",
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+  border: "1px solid #cbd5e1",
+  borderRadius: 12,
+  background: "#fff",
+  color: "#0f172a",
+  padding: "9px 14px",
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: "pointer",
+  textDecoration: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const statsGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(120px, 1fr))",
+  gap: 12,
+  alignSelf: "stretch",
+  minWidth: 280,
+  flex: "1 1 320px",
+};
+
+const tabListStyle: React.CSSProperties = {
+  display: "inline-flex",
+  gap: 10,
+  padding: 6,
+  borderRadius: 16,
+  background: "#eaf0f7",
+  border: "1px solid #d7e0eb",
+  flexWrap: "wrap",
+};
+
+const selectInputStyle: React.CSSProperties = {
+  minHeight: 38,
+  border: "1px solid #cbd5e1",
+  borderRadius: 12,
+  background: "#fff",
+  color: "#0f172a",
+  padding: "8px 10px",
+  fontSize: 14,
+  lineHeight: 1.2,
+  fontWeight: 500,
+  boxSizing: "border-box",
+};
+
 function now() {
   return Date.now();
 }
@@ -620,98 +751,142 @@ export default function Page() {
   }, [canViewCoachMatches, coachClientView]);
 
   return (
-    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", padding: 12, maxWidth: 1200 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontWeight: 800 }}>Job Search Ops</div>
-          <div style={{ fontSize: 12, opacity: 0.8 }}>MVP v1 + Speed/Portal</div>
-        </div>
+    <main style={shellStyle}>
+      <div style={containerStyle}>
+        <section style={heroCardStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+            <div>
+              <p style={sectionEyebrowStyle}>Board workspace</p>
+              <h1 style={{ margin: "8px 0 10px", fontSize: 36, lineHeight: 1.05, letterSpacing: "-0.04em" }}>
+                Job Search Ops Board
+              </h1>
+              <p style={{ ...mutedTextStyle, maxWidth: 700 }}>
+                Manage the active job board with the same polished shell as coach while keeping fast triage, notes, bulk actions, and client preview tools in one place.
+              </p>
+            </div>
+            <div style={statsGridStyle}>
+              {[
+                ["Total jobs", String(state.jobs.length)],
+                ["Visible lane", String(visibleJobs.length)],
+                ["Clients", String(state.clients.length)],
+              ].map(([label, value]) => (
+                <div key={label} style={{ background: "rgba(255,255,255,0.72)", border: "1px solid #d8e2ee", borderRadius: 16, padding: 16 }}>
+                  <div style={{ fontSize: 12, color: "#526071", marginBottom: 6 }}>{label}</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.03em" }}>{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={loadDemo}>Load demo</button>
-          <button onClick={clearData}>Clear data</button>
+        <section style={utilityGridStyle}>
+          <div style={utilityPanelStyle}>
+            <p style={sectionEyebrowStyle}>Workspace Controls</p>
+            <h2 style={{ ...sectionTitleStyle, marginBottom: 8 }}>Board setup</h2>
+            <p style={{ ...mutedTextStyle, marginBottom: 14 }}>
+              Switch modes, manage client context, and keep backups without falling back to the older utility-strip layout.
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={loadDemo} style={secondaryButtonStyle}>Load demo</button>
+              <button onClick={clearData} style={secondaryButtonStyle}>Clear data</button>
+              <button onClick={exportBackup} title="Download a JSON backup of your current state" style={secondaryButtonStyle}>
+                Export backup
+              </button>
+              <button onClick={triggerImport} title="Import a previously exported backup JSON (overwrites current state)" style={secondaryButtonStyle}>
+                Import backup
+              </button>
+            </div>
 
-          <button onClick={exportBackup} title="Download a JSON backup of your current state">
-            Export backup
-          </button>
+            <input
+              ref={importRef}
+              type="file"
+              accept="application/json"
+              style={{ display: "none" }}
+              onChange={(e) => handleImportFile(e.target.files?.[0] ?? null)}
+            />
 
-          <button onClick={triggerImport} title="Import a previously exported backup JSON (overwrites current state)">
-            Import backup
-          </button>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginTop: 14 }}>
+              <select value={state.mode} onChange={(e) => setMode(e.target.value as Mode)} title="Mode" style={selectInputStyle}>
+                <option value="coach">Coach (Operator)</option>
+                <option value="client">Client (preview)</option>
+              </select>
 
-          <input
-            ref={importRef}
-            type="file"
-            accept="application/json"
-            style={{ display: "none" }}
-            onChange={(e) => handleImportFile(e.target.files?.[0] ?? null)}
-          />
+              <select
+                value={state.selectedClientId ?? ""}
+                onChange={(e) => setState((s) => ({ ...s, selectedClientId: e.target.value || undefined }))}
+                title="Client"
+                style={selectInputStyle}
+              >
+                <option value="">All clients</option>
+                {state.clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <select value={state.mode} onChange={(e) => setMode(e.target.value as Mode)} title="Mode">
-            <option value="coach">Coach (Operator)</option>
-            <option value="client">Client (preview)</option>
-          </select>
+            <div style={{ marginTop: 14 }}>
+              <AddClientInline onAdd={addClient} />
+            </div>
+          </div>
 
-          <select
-            value={state.selectedClientId ?? ""}
-            onChange={(e) => setState((s) => ({ ...s, selectedClientId: e.target.value || undefined }))}
-            title="Client"
-          >
-            <option value="">All clients</option>
-            {state.clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <div style={utilityPanelStyle}>
+            <p style={sectionEyebrowStyle}>Search</p>
+            <h2 style={{ ...sectionTitleStyle, marginBottom: 8 }}>Filter the board</h2>
+            <p style={{ ...mutedTextStyle, marginBottom: 14 }}>
+              Search across role details and keep the board sorted with the same card-based presentation as coach.
+            </p>
+            <div style={{ display: "grid", gap: 12 }}>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search title, company, link, location, or salary..."
+                style={textInputStyle}
+              />
 
-          <AddClientInline onAdd={addClient} />
-        </div>
-      </div>
-
-      <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search title/company/link/location/salary…"
-          style={{ flex: "1 1 320px", padding: "6px 8px" }}
-        />
-
-        <select value={sortMode} onChange={(e) => setSortMode(e.target.value as any)} title="Sort">
-          <option value="movedNewest">Sort: moved newest</option>
-          <option value="createdNewest">Sort: created newest</option>
-        </select>
-      </div>
+              <select value={sortMode} onChange={(e) => setSortMode(e.target.value as any)} title="Sort" style={selectInputStyle}>
+                <option value="movedNewest">Sort: moved newest</option>
+                <option value="createdNewest">Sort: created newest</option>
+              </select>
+            </div>
+          </div>
+        </section>
 
       {/* Coach-only Client Link panel */}
       {state.mode === "coach" && (
-        <div style={{ marginTop: 10, border: "1px solid #bbb", padding: 8 }}>
+        <section style={{ ...cardStyle, marginBottom: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <div style={{ fontWeight: 700 }}>Client Link</div>
+            <div>
+              <p style={sectionEyebrowStyle}>Client Link</p>
+              <h2 style={sectionTitleStyle}>Share a client view</h2>
+            </div>
 
-            <button onClick={copyClientLink} disabled={!canGenerateClientLink || copied} style={{ opacity: !canGenerateClientLink ? 0.5 : 1 }}>
+            <div style={{ flex: 1 }} />
+
+            <button onClick={copyClientLink} disabled={!canGenerateClientLink || copied} style={{ ...secondaryButtonStyle, opacity: !canGenerateClientLink ? 0.5 : 1 }}>
               {copied ? "Copied ✓" : "Copy client link"}
             </button>
 
-            <button onClick={openClientLink} disabled={!canGenerateClientLink} style={{ opacity: !canGenerateClientLink ? 0.5 : 1 }}>
+            <button onClick={openClientLink} disabled={!canGenerateClientLink} style={{ ...secondaryButtonStyle, opacity: !canGenerateClientLink ? 0.5 : 1 }}>
               Open
             </button>
 
             <input
               readOnly
               value={canGenerateClientLink ? clientLinkValue : "Select a client (not 'All clients') to generate a link…"}
-              style={{ flex: "1 1 520px", padding: "6px 8px" }}
+              style={{ ...textInputStyle, flex: "1 1 520px" }}
             />
           </div>
 
-          <div style={{ fontSize: 12, marginTop: 6, opacity: 0.85 }}>
+          <div style={{ ...mutedTextStyle, marginTop: 10 }}>
             Tip: Select a client from the dropdown, then copy this link and send it. Client sees only assigned jobs + client notes.
           </div>
-        </div>
+        </section>
       )}
 
       {canViewCoachMatches ? (
-        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ marginBottom: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             onClick={() => setCoachClientView("jobs")}
             style={{
@@ -742,7 +917,8 @@ export default function Page() {
       {coachClientView === "jobs" || !canViewCoachMatches ? (
         <>
           {/* Lane Tabs (UI uppercase) */}
-          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ marginBottom: 14 }}>
+            <nav aria-label="Board lanes" style={tabListStyle}>
             {UPPER_LANES.map((lane) => {
               const active = activeUpper === lane;
               return (
@@ -750,10 +926,10 @@ export default function Page() {
                   key={lane}
                   onClick={() => setActiveUpperLane(lane)}
                   style={{
-                    border: "1px solid #99b",
-                    padding: "6px 10px",
+                    ...secondaryButtonStyle,
                     borderRadius: 999,
-                    background: active ? "#d7ecff" : "#f4f7ff",
+                    background: active ? "#ffffff" : "transparent",
+                    boxShadow: active ? "0 8px 18px rgba(15, 23, 42, 0.08)" : "none",
                     fontWeight: active ? 800 : 600,
                   }}
                 >
@@ -761,14 +937,16 @@ export default function Page() {
                 </button>
               );
             })}
+            </nav>
           </div>
 
       {/* Main lane header */}
-      <div style={{ marginTop: 10, background: "#d7ecff", border: "1px solid #99b", padding: 10, borderRadius: 10 }}>
+      <section style={{ ...cardStyle, marginBottom: 16, background: "linear-gradient(135deg, #ffffff 0%, #f6f9fc 62%, #eef6ff 100%)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontWeight: 800 }}>{activeUpper}</div>
-            <div style={{ fontSize: 12, opacity: 0.85 }}>
+            <p style={sectionEyebrowStyle}>Active Lane</p>
+            <h2 style={{ ...sectionTitleStyle, marginBottom: 8 }}>{activeUpper}</h2>
+            <div style={mutedTextStyle}>
               {state.mode === "coach"
                 ? "Triage fast: assign, notes, bulk move."
                 : `Client: ${selectedClient?.name ?? "(missing)"} — shows assigned jobs + notes.`}
@@ -776,46 +954,48 @@ export default function Page() {
           </div>
 
           {state.mode === "coach" && (
-            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-              <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Job title" style={{ padding: "6px 8px" }} />
-              <input value={newCompany} onChange={(e) => setNewCompany(e.target.value)} placeholder="Company" style={{ padding: "6px 8px" }} />
-              <input value={newLink} onChange={(e) => setNewLink(e.target.value)} placeholder="Link (optional)" style={{ padding: "6px 8px" }} />
-              <button onClick={addJob}>Add Job</button>
-              <button onClick={addIngestedJob}>Add Job (Unverified)</button>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, flex: "1 1 520px" }}>
+              <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder="Job title" style={textInputStyle} />
+              <input value={newCompany} onChange={(e) => setNewCompany(e.target.value)} placeholder="Company" style={textInputStyle} />
+              <input value={newLink} onChange={(e) => setNewLink(e.target.value)} placeholder="Link (optional)" style={textInputStyle} />
               <textarea
                 value={newIngestText}
                 onChange={(e) => setNewIngestText(e.target.value)}
                 placeholder="Paste email or job description (optional)"
                 rows={2}
-                style={{ padding: "6px 8px", minWidth: 280 }}
+                style={{ ...textInputStyle, minWidth: 280, resize: "vertical" }}
               />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={addJob} style={primaryButtonStyle}>Add Job</button>
+                <button onClick={addIngestedJob} style={secondaryButtonStyle}>Add Job (Unverified)</button>
+              </div>
             </div>
           )}
         </div>
 
         {state.mode === "coach" && (
           <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <button onClick={selectAllVisible}>Select all in lane</button>
-            <button onClick={clearSelection}>Clear selection</button>
+            <button onClick={selectAllVisible} style={secondaryButtonStyle}>Select all in lane</button>
+            <button onClick={clearSelection} style={secondaryButtonStyle}>Clear selection</button>
             <div style={{ fontSize: 12, opacity: 0.9 }}>Selected: {selectedCount}</div>
 
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               <label style={{ fontSize: 12, opacity: 0.85 }}>Move →</label>
-              <select value={bulkMoveTarget} onChange={(e) => setBulkMoveTarget(e.target.value as UpperLaneId)}>
+              <select value={bulkMoveTarget} onChange={(e) => setBulkMoveTarget(e.target.value as UpperLaneId)} style={selectInputStyle}>
                 {UPPER_LANES.filter((l) => l !== activeUpper).map((l) => (
                   <option key={l} value={l}>
                     {l}
                   </option>
                 ))}
               </select>
-              <button onClick={bulkMoveSelected} disabled={selectedCount === 0}>
+              <button onClick={bulkMoveSelected} disabled={selectedCount === 0} style={secondaryButtonStyle}>
                 Bulk Move
               </button>
             </div>
 
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               <label style={{ fontSize: 12, opacity: 0.85 }}>Bulk assign: add client…</label>
-              <select value={bulkAssignClientId} onChange={(e) => setBulkAssignClientId(e.target.value)}>
+              <select value={bulkAssignClientId} onChange={(e) => setBulkAssignClientId(e.target.value)} style={selectInputStyle}>
                 <option value="">Assign to client…</option>
                 {state.clients.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -823,17 +1003,17 @@ export default function Page() {
                   </option>
                 ))}
               </select>
-              <button onClick={bulkAssignSelected} disabled={selectedCount === 0 || !bulkAssignClientId} title="Adds this client to selected jobs (does not overwrite)">
+              <button onClick={bulkAssignSelected} disabled={selectedCount === 0 || !bulkAssignClientId} title="Adds this client to selected jobs (does not overwrite)" style={secondaryButtonStyle}>
                 Bulk Assign (Add)
               </button>
             </div>
           </div>
         )}
-      </div>
+      </section>
 
           <div style={{ marginTop: 12 }}>
             {visibleJobs.length === 0 ? (
-              <div style={{ padding: 20, opacity: 0.75, textAlign: "center", border: "1px dashed #aaa" }}>No jobs in this lane.</div>
+              <div style={{ ...cardStyle, padding: 20, opacity: 0.75, textAlign: "center", borderStyle: "dashed", boxShadow: "none" }}>No jobs in this lane.</div>
             ) : (
               visibleJobs.map((job) => (
                 <JobCard
@@ -869,7 +1049,8 @@ export default function Page() {
       <div style={{ marginTop: 18, fontSize: 12, opacity: 0.75 }}>
         Local storage key: <code>{STORAGE_KEY}</code>
       </div>
-    </div>
+      </div>
+    </main>
   );
 }
 
@@ -881,9 +1062,10 @@ function AddClientInline({ onAdd }: { onAdd: (name: string) => void }) {
   const [name, setName] = useState("");
 
   return (
-    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Add client…" style={{ padding: "6px 8px" }} />
+    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Add client…" style={{ ...textInputStyle, width: 220 }} />
       <button
+        style={secondaryButtonStyle}
         onClick={() => {
           const n = name.trim();
           if (!n) return;
@@ -955,10 +1137,10 @@ function JobCard(props: {
       : "—";
 
   return (
-    <div style={{ border: "1px solid #999", marginTop: 10 }}>
+    <div style={{ border: "1px solid #999", marginTop: 10, minWidth: 0, overflowX: "hidden" }}>
       <div style={{ padding: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ minWidth: 260 }}>
+          <div style={{ minWidth: 0, flex: "1 1 260px", overflowWrap: "anywhere" }}>
             {mode === "coach" && (
               <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <input type="checkbox" checked={selected} onChange={(e) => props.onToggleSelected(e.target.checked)} />
@@ -989,7 +1171,7 @@ function JobCard(props: {
             <div style={{ fontSize: 12, opacity: 0.8 }}>{new Date(job.movedAt).toLocaleString()}</div>
 
             {mode === "coach" && (
-              <select value={upperLane} onChange={(e) => props.onMove(e.target.value as UpperLaneId)} title="Move">
+              <select value={upperLane} onChange={(e) => props.onMove(e.target.value as UpperLaneId)} title="Move" style={selectInputStyle}>
                 {UPPER_LANES.map((l) => (
                   <option key={l} value={l}>
                     {l}
@@ -1030,7 +1212,7 @@ function JobCard(props: {
                 </span>
               ))}
 
-              <select value={assignPick} onChange={(e) => setAssignPick(e.target.value)}>
+              <select value={assignPick} onChange={(e) => setAssignPick(e.target.value)} style={selectInputStyle}>
                 <option value="">Assign client…</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -1057,7 +1239,7 @@ function JobCard(props: {
           <div style={{ marginTop: 8 }}>
             <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Send to Client</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <select value={sendPick} onChange={(e) => setSendPick(e.target.value)}>
+              <select value={sendPick} onChange={(e) => setSendPick(e.target.value)} style={selectInputStyle}>
                 <option value="">Select client…</option>
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -1079,13 +1261,13 @@ function JobCard(props: {
           </div>
         )}
 
-        <div style={{ marginTop: 10 }}>
+        <div style={{ marginTop: 10, minWidth: 0 }}>
           <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Client Notes (client-safe)</div>
           <textarea
             value={job.clientNotes}
             onChange={(e) => props.onChangeClientNotes(e.target.value)}
             rows={2}
-            style={{ width: "100%", padding: 8 }}
+            style={{ display: "block", width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: 8, resize: "vertical" }}
             readOnly={mode === "client"}
           />
         </div>
@@ -1109,6 +1291,7 @@ function JobCard(props: {
                   (e.target.value || null) as Job["outcome_status"]
                 )
               }
+              style={selectInputStyle}
             >
               <option value="">Select…</option>
               <option value="interview">Interview</option>
@@ -1120,9 +1303,14 @@ function JobCard(props: {
         )}
 
         {mode === "coach" && (
-          <div style={{ marginTop: 10 }}>
+          <div style={{ marginTop: 10, minWidth: 0 }}>
             <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Internal Notes (coach-only)</div>
-            <textarea value={job.internalNotes} onChange={(e) => props.onChangeInternalNotes(e.target.value)} rows={2} style={{ width: "100%", padding: 8 }} />
+            <textarea
+              value={job.internalNotes}
+              onChange={(e) => props.onChangeInternalNotes(e.target.value)}
+              rows={2}
+              style={{ display: "block", width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: 8, resize: "vertical" }}
+            />
           </div>
         )}
       </div>

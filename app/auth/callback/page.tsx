@@ -6,6 +6,25 @@ import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
 const THIRTY_DAYS = 60 * 60 * 24 * 30;
 
+const shellStyle: React.CSSProperties = {
+  minHeight: "100vh",
+  display: "grid",
+  placeItems: "center",
+  padding: "32px 20px",
+  background: "radial-gradient(circle at top, #dbeafe 0%, #eff6ff 26%, #f8fafc 58%, #eef2ff 100%)",
+};
+
+const cardStyle: React.CSSProperties = {
+  width: "100%",
+  maxWidth: 440,
+  padding: 32,
+  borderRadius: 28,
+  background: "rgba(255, 255, 255, 0.92)",
+  border: "1px solid rgba(148, 163, 184, 0.22)",
+  boxShadow: "0 28px 80px rgba(15, 23, 42, 0.14)",
+  backdropFilter: "blur(14px)",
+};
+
 type OtpType = "magiclink" | "recovery" | "invite" | "email" | "email_change";
 
 function setAuthCookies(accessToken: string, refreshToken: string) {
@@ -30,6 +49,23 @@ export default function AuthCallbackPage() {
 
         if (hashAccessToken && hashRefreshToken) {
           setAuthCookies(hashAccessToken, hashRefreshToken);
+          router.replace("/client");
+          return;
+        }
+
+        const authCode = searchParams.get("code");
+
+        if (authCode) {
+          const { data, error: exchangeError } = await getSupabaseBrowser().auth.exchangeCodeForSession(authCode);
+
+          if (exchangeError || !data.session?.access_token || !data.session?.refresh_token) {
+            if (active) {
+              setError(exchangeError?.message ?? "Invalid or expired magic link");
+            }
+            return;
+          }
+
+          setAuthCookies(data.session.access_token, data.session.refresh_token);
           router.replace("/client");
           return;
         }
@@ -83,9 +119,28 @@ export default function AuthCallbackPage() {
   }, [router]);
 
   return (
-    <main style={{ padding: 24 }}>
-      <h1>Signing in...</h1>
-      {error ? <p style={{ color: "#b91c1c" }}>{error}</p> : null}
+    <main style={shellStyle}>
+      <section style={cardStyle}>
+        <div style={{ display: "inline-flex", padding: "7px 12px", borderRadius: 999, background: "#dbeafe", color: "#1d4ed8", fontSize: 12, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          Secure Login
+        </div>
+        <h1 style={{ margin: "16px 0 10px", fontSize: 36, lineHeight: 1.02, letterSpacing: "-0.04em", color: "#0f172a" }}>
+          Signing you in
+        </h1>
+        <p style={{ margin: 0, color: "#526071", fontSize: 15, lineHeight: 1.6 }}>
+          We&apos;re finishing the magic-link sign-in and redirecting you to your dashboard.
+        </p>
+        {error ? (
+          <p style={{ margin: "16px 0 0", color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 14, padding: "12px 14px", fontSize: 14 }}>
+            {error}
+          </p>
+        ) : (
+          <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 12, color: "#334155", fontSize: 14, fontWeight: 600 }}>
+            <span style={{ width: 14, height: 14, borderRadius: 999, background: "linear-gradient(135deg, #2563eb 0%, #0f172a 100%)", boxShadow: "0 0 0 6px rgba(37, 99, 235, 0.12)" }} />
+            Verifying your secure sign-in link...
+          </div>
+        )}
+      </section>
     </main>
   );
 }

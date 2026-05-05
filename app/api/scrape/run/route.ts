@@ -1,14 +1,20 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { startIngestRun } from "@/lib/ingest/ingestRun";
+import { serializeIngestError, startIngestRun } from "@/lib/ingest/ingestRun";
 import { ingestJob } from "@/lib/ingest/ingestJob";
+import { getGreenhouseStubJobs } from "@/lib/scrapers/greenhouseStub";
+
+type ScrapeRunBody = {
+  mode?: unknown;
+  jobs?: unknown[];
+};
 
 export async function POST(req: Request) {
   console.error("[CRON_DIAG][run] ENTER");
 
-  let body: unknown;
+  let body: ScrapeRunBody;
   try {
-    body = await req.json();
+    body = (await req.json()) as ScrapeRunBody;
     console.error("[CRON_DIAG][run] JSON OK");
   } catch (e) {
     console.error("[CRON_DIAG][run] JSON FAIL", e);
@@ -30,7 +36,12 @@ export async function POST(req: Request) {
   });
   console.error("[CRON_DIAG][run] startIngestRun OK", { ingest_run_id });
 
-  const jobs = (body as { jobs?: unknown[] }).jobs;
+  let jobs = Array.isArray(body.jobs) ? body.jobs : null;
+
+  if (body.mode === "stub") {
+    jobs = await getGreenhouseStubJobs();
+  }
+
   if (!Array.isArray(jobs)) {
     return NextResponse.json({ ok: false, step: "jobs" }, { status: 400 });
   }
@@ -67,8 +78,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, ingest_run_id, ingested });
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : JSON.stringify(err);
-    const errorString = typeof errorMessage === "string" ? errorMessage : String(errorMessage);
+    const errorString = serializeIngestError(err);
 
     await supabase
       .from("ingest_runs")

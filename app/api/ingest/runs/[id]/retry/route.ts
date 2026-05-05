@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { ingestJob } from "@/lib/ingest/ingestJob";
-import { startIngestRun, completeIngestRun, failIngestRun } from "@/lib/ingest/ingestRun";
+import { startIngestRun, completeIngestRun, failIngestRun, serializeIngestError } from "@/lib/ingest/ingestRun";
 import { getGreenhouseStubJobs } from "@/lib/scrapers/greenhouseStub";
 
 type RouteContext = {
@@ -121,7 +121,7 @@ export async function POST(_req: Request, context: RouteContext) {
       if (!runClosed) {
         await failIngestRun({
           ingest_run_id: newRunId,
-          error_message: error instanceof Error ? error.message : String(error),
+          error_message: serializeIngestError(error),
           supabase,
         });
       }

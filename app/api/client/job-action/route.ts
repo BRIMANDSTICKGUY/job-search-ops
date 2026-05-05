@@ -6,12 +6,30 @@ type RequestBody = {
   action?: unknown;
 };
 
-type ClientJobAction = "viewed" | "applied" | "saved" | "dismissed";
+type ClientJobAction =
+  | "viewed"
+  | "saved"
+  | "applied"
+  | "interview"
+  | "offer"
+  | "rejected"
+  | "dismissed";
+
+type AssignmentRow = {
+  id: string;
+};
+
+type MatchRow = {
+  band: string | null;
+};
 
 const VALID_ACTIONS: ClientJobAction[] = [
   "viewed",
-  "applied",
   "saved",
+  "applied",
+  "interview",
+  "offer",
+  "rejected",
   "dismissed",
 ];
 
@@ -58,7 +76,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data: matchRow, error: matchError } = await supabase
+  const { data: assignmentRow, error: assignmentError } = await supabase
+    .from("job_assignments")
+    .select("id")
+    .eq("client_id_uuid", user.id)
+    .eq("job_id", jobId)
+    .limit(1)
+    .maybeSingle();
+
+  if (assignmentError) {
+    return NextResponse.json(
+      { ok: false, error: assignmentError.message },
+      { status: 500 }
+    );
+  }
+
+  if (!assignmentRow) {
+    return NextResponse.json(
+      { ok: false, error: "Assigned job not found" },
+      { status: 404 }
+    );
+  }
+
+  const { data: matchRow } = await supabase
     .from("job_matches")
     .select("band")
     .eq("client_id", user.id)
@@ -67,26 +107,16 @@ export async function POST(req: NextRequest) {
     .limit(1)
     .maybeSingle();
 
-  if (matchError) {
-    return NextResponse.json(
-      { ok: false, error: matchError.message },
-      { status: 500 }
-    );
-  }
-
-  if (!matchRow) {
-    return NextResponse.json(
-      { ok: false, error: "Matching job_match not found" },
-      { status: 404 }
-    );
-  }
-
-  const { error: insertError } = await supabase.from("client_job_actions").insert({
+  const insertPayload = {
     client_id: user.id,
     job_id: jobId,
-    band_at_time: matchRow.band,
     action,
-  });
+    ...(((matchRow as MatchRow | null)?.band ?? null)
+      ? { band_at_time: (matchRow as MatchRow).band }
+      : {}),
+  };
+
+  const { error: insertError } = await supabase.from("client_job_actions").insert(insertPayload);
 
   if (insertError) {
     return NextResponse.json(
