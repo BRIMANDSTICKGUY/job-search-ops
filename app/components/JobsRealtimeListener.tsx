@@ -1,11 +1,16 @@
 "use client";
 
 import { useEffect } from "react";
-import { getSupabaseBrowser } from "../../lib/supabase/browser";
+import { getSupabaseBrowser, hasSupabaseBrowserEnv } from "../../lib/supabase/browser";
 
 export default function JobsRealtimeListener() {
   useEffect(() => {
-    const channel = getSupabaseBrowser()
+    if (!hasSupabaseBrowserEnv()) {
+      return;
+    }
+
+    const supabase = getSupabaseBrowser();
+    const channel = supabase
       .channel("jobs-updates")
       .on(
         "postgres_changes",
@@ -23,7 +28,7 @@ export default function JobsRealtimeListener() {
       });
 
     return () => {
-      getSupabaseBrowser().removeChannel(channel);
+      supabase.removeChannel(channel);
     };
   }, []);
 

@@ -47,3 +47,19 @@ If you see uppercase lanes in state, jobs, or LocalStorage — that is a bug.
 
 The entire app (coach + client) uses ONE storage key:
 
+---
+
+## Local env setup
+
+For local Supabase-enabled development, copy `.env.local.example` to `.env.local` and fill in these values:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+Behavior is intentional:
+
+- If the public env vars are missing, the browser realtime listener is skipped so the UI still loads.
+- If the server-side vars are missing, API routes that depend on Supabase will not work until they are provided.
+
