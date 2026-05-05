@@ -1,11 +1,193 @@
 import { getCoachSupabase } from "@/lib/supabase/coach";
-import { assignJobToClient, updateJobLane } from "./actions";
+import { assignJobToClientFromForm, updateJobLane } from "./actions";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { RunGreenhouseScrapeButton } from "@/components/RunGreenhouseScrapeButton";
-import { IngestRunsTable, RetryIngestRunButton } from "@/components/IngestRunsTable";
+import { IngestRunsTable } from "@/components/IngestRunsTable";
 import { IngestRunJobsTable } from "@/components/IngestRunJobsTable";
+
+const PAGE_SIZE = 12;
+
+const shellStyle: React.CSSProperties = {
+  minHeight: "100vh",
+  background: "linear-gradient(180deg, #f4f7fb 0%, #eef3f8 100%)",
+  padding: "32px 24px 64px",
+  color: "#0f172a",
+};
+
+const containerStyle: React.CSSProperties = {
+  maxWidth: 1180,
+  margin: "0 auto",
+};
+
+const cardStyle: React.CSSProperties = {
+  background: "#ffffff",
+  border: "1px solid #dbe4f0",
+  borderRadius: 20,
+  boxShadow: "0 16px 40px rgba(15, 23, 42, 0.06)",
+  padding: 24,
+};
+
+const sectionTitleStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: 22,
+  fontWeight: 700,
+  letterSpacing: "-0.02em",
+};
+
+const mutedTextStyle: React.CSSProperties = {
+  margin: 0,
+  color: "#526071",
+  fontSize: 14,
+  lineHeight: 1.5,
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "11px 13px",
+  borderRadius: 12,
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  fontSize: 14,
+  color: "#0f172a",
+  boxSizing: "border-box",
+};
+
+const primaryButtonStyle: React.CSSProperties = {
+  border: "none",
+  borderRadius: 12,
+  background: "#0f172a",
+  color: "#fff",
+  padding: "11px 16px",
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const secondaryButtonStyle: React.CSSProperties = {
+  border: "1px solid #cbd5e1",
+  borderRadius: 12,
+  background: "#fff",
+  color: "#0f172a",
+  padding: "9px 14px",
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: "pointer",
+  textDecoration: "none",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const tabListStyle: React.CSSProperties = {
+  display: "inline-flex",
+  gap: 10,
+  padding: 6,
+  borderRadius: 16,
+  background: "#eaf0f7",
+  border: "1px solid #d7e0eb",
+  flexWrap: "wrap",
+};
+
+const tabLinkBaseStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "10px 14px",
+  borderRadius: 12,
+  textDecoration: "none",
+  fontSize: 14,
+  fontWeight: 700,
+};
+
+const operationsGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+  gap: 16,
+};
+
+const utilityPanelStyle: React.CSSProperties = {
+  border: "1px solid #e2e8f0",
+  borderRadius: 18,
+  padding: 18,
+  background: "#fbfdff",
+};
+
+const sectionEyebrowStyle: React.CSSProperties = {
+  margin: "0 0 8px",
+  color: "#64748b",
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+};
+
+type PagerProps = {
+  currentPage: number;
+  totalPages: number;
+  previousHref: string | null;
+  nextHref: string | null;
+  label: string;
+};
+
+function parsePageParam(value: string | null | undefined): number {
+  const parsed = Number.parseInt(value ?? "1", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function buildCoachHref(
+  params: URLSearchParams,
+  updates: Record<string, string | null>
+): string {
+  const nextParams = new URLSearchParams(params);
+  for (const [key, value] of Object.entries(updates)) {
+    if (!value || value === "1") {
+      nextParams.delete(key);
+      continue;
+    }
+    nextParams.set(key, value);
+  }
+  const query = nextParams.toString();
+  return query ? `/coach?${query}` : "/coach";
+}
+
+function renderPager({ currentPage, totalPages, previousHref, nextHref, label }: PagerProps) {
+  if (totalPages <= 1) return null;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+        marginTop: 18,
+        flexWrap: "wrap",
+      }}
+    >
+      <p style={mutedTextStyle}>
+        {label} page {currentPage} of {totalPages}
+      </p>
+      <div style={{ display: "flex", gap: 10 }}>
+        {previousHref ? (
+          <a href={previousHref} style={secondaryButtonStyle}>
+            Previous
+          </a>
+        ) : (
+          <span style={{ ...secondaryButtonStyle, opacity: 0.45, cursor: "default" }}>Previous</span>
+        )}
+        {nextHref ? (
+          <a href={nextHref} style={secondaryButtonStyle}>
+            Next
+          </a>
+        ) : (
+          <span style={{ ...secondaryButtonStyle, opacity: 0.45, cursor: "default" }}>Next</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 type CoachJob = {
   id: string;
@@ -25,6 +207,7 @@ type UnassignedJob = {
 type CoachClient = {
   id: string;
   name: string;
+  auth_user_id: string | null;
 };
 
 type IngestRun = {
@@ -46,6 +229,9 @@ type CoachPageProps = {
     manual_error?: string | string[];
     manual_success?: string | string[];
     run_id?: string | string[];
+    assigned_page?: string | string[];
+    intake_page?: string | string[];
+    tab?: string | string[];
   }>;
 };
 
@@ -54,6 +240,9 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
   const manualErrorParam = resolvedSearchParams?.manual_error;
   const manualSuccessParam = resolvedSearchParams?.manual_success;
   const runIdParam = resolvedSearchParams?.run_id;
+  const assignedPageParam = resolvedSearchParams?.assigned_page;
+  const intakePageParam = resolvedSearchParams?.intake_page;
+  const tabParam = resolvedSearchParams?.tab;
   const manualError =
     typeof manualErrorParam === "string"
       ? manualErrorParam
@@ -69,6 +258,33 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
       : Array.isArray(runIdParam)
         ? runIdParam[0] ?? null
         : null;
+  const currentAssignedPage = parsePageParam(
+    typeof assignedPageParam === "string"
+      ? assignedPageParam
+      : Array.isArray(assignedPageParam)
+        ? assignedPageParam[0]
+        : null
+  );
+  const currentIntakePage = parsePageParam(
+    typeof intakePageParam === "string"
+      ? intakePageParam
+      : Array.isArray(intakePageParam)
+        ? intakePageParam[0]
+        : null
+  );
+  const activeTabValue =
+    typeof tabParam === "string"
+      ? tabParam
+      : Array.isArray(tabParam)
+        ? tabParam[0] ?? null
+        : null;
+  const activeTab = activeTabValue === "assigned" ? "assigned" : "intake";
+  const coachSearchParams = new URLSearchParams();
+
+  if (selectedRunId) coachSearchParams.set("run_id", selectedRunId);
+  if (manualSuccess) coachSearchParams.set("manual_success", "1");
+  if (manualError) coachSearchParams.set("manual_error", manualError);
+  if (activeTab === "assigned") coachSearchParams.set("tab", "assigned");
 
   const supabase = getCoachSupabase();
   if (!supabase) {
@@ -89,22 +305,14 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
     new Set(((assignedJobRows ?? []) as JobAssignmentRow[]).map((row) => row.job_id).filter(Boolean))
   );
 
-  const { data: assignedJobs, error: assignedJobsError } = assignedJobIdList.length
-    ? await supabase
-        .from("jobs")
-        .select("id, title, company, lane, client_status")
-        .in("id", assignedJobIdList)
-        .eq("is_test", false)
-    : { data: [], error: null };
-
   const { data: allJobs, error: allJobsError } = await supabase
     .from("jobs")
-    .select("id, title, company, link")
+    .select("id, title, company, link, lane, client_status")
     .eq("is_test", false);
 
   const { data: clients, error: clientsError } = await supabase
     .from("clients")
-    .select("id, name")
+    .select("id, name, auth_user_id")
     .order("name", { ascending: true });
 
   const { data: ingestRuns, error: ingestRunsError } = await supabase
@@ -115,7 +323,6 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
 
   const coachQueryErrorMessage =
     error?.message ??
-    assignedJobsError?.message ??
     allJobsError?.message ??
     clientsError?.message ??
     ingestRunsError?.message ??
@@ -124,32 +331,65 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
   if (coachQueryErrorMessage) {
     // Local dev should keep the page usable even if some Supabase-backed queries fail.
     console.warn("Coach dashboard query failed", {
-      jobsError: error,
-      unassignedJobsError: allJobsError,
-      clientsError,
-      ingestRunsError,
+      jobsError: error?.message ?? null,
+      unassignedJobsError: allJobsError?.message ?? null,
+      clientsError: clientsError?.message ?? null,
+      ingestRunsError: ingestRunsError?.message ?? null,
     });
   }
 
-  const typedJobs: CoachJob[] = (assignedJobs ?? []) as CoachJob[];
-  const assignedJobIds = new Set(typedJobs.map((job) => job.id));
-  const typedUnassignedJobs = ((allJobs ?? []) as UnassignedJob[]).filter(
-    (job) => !assignedJobIds.has(job.id)
+  const typedAllJobs = (allJobs ?? []) as Array<CoachJob & UnassignedJob>;
+  const assignedJobIds = new Set(assignedJobIdList);
+  const typedJobs: CoachJob[] = typedAllJobs
+    .filter((job) => assignedJobIds.has(job.id))
+    .sort((left, right) => left.company.localeCompare(right.company) || left.title.localeCompare(right.title));
+  const typedUnassignedJobs = typedAllJobs
+    .filter((job) => !assignedJobIds.has(job.id))
+    .sort((left, right) => left.company.localeCompare(right.company) || left.title.localeCompare(right.title));
+  const totalAssignedPages = Math.max(1, Math.ceil(typedJobs.length / PAGE_SIZE));
+  const totalIntakePages = Math.max(1, Math.ceil(typedUnassignedJobs.length / PAGE_SIZE));
+  const assignedPage = Math.min(currentAssignedPage, totalAssignedPages);
+  const intakePage = Math.min(currentIntakePage, totalIntakePages);
+  const paginatedAssignedJobs = typedJobs.slice(
+    (assignedPage - 1) * PAGE_SIZE,
+    assignedPage * PAGE_SIZE
+  );
+  const paginatedIntakeJobs = typedUnassignedJobs.slice(
+    (intakePage - 1) * PAGE_SIZE,
+    intakePage * PAGE_SIZE
   );
   const typedClients = (clients ?? []) as CoachClient[];
-  const typedIngestRuns = (ingestRuns ?? []) as IngestRun[];
-  const isIntakeJob = (jobId: string) => !assignedJobIds.has(jobId);
-  const existingJobKeys = [
-    ...typedJobs.map((job) => ({
-      title: job.title.trim().toLowerCase(),
-      company: job.company.trim().toLowerCase(),
-    })),
-    ...typedUnassignedJobs.map((job) => ({
-      title: job.title.trim().toLowerCase(),
-      company: job.company.trim().toLowerCase(),
-    })),
-  ];
   const LANES = ["INBOX", "VERIFIED", "CLIENT-SENT", "WATCHLIST", "REJECTED"];
+  const assignedPreviousHref =
+    assignedPage > 1
+      ? buildCoachHref(coachSearchParams, { assigned_page: String(assignedPage - 1), intake_page: String(intakePage) })
+      : null;
+  const assignedNextHref =
+    assignedPage < totalAssignedPages
+      ? buildCoachHref(coachSearchParams, { assigned_page: String(assignedPage + 1), intake_page: String(intakePage) })
+      : null;
+  const intakePreviousHref =
+    intakePage > 1
+      ? buildCoachHref(coachSearchParams, { assigned_page: String(assignedPage), intake_page: String(intakePage - 1) })
+      : null;
+  const intakeNextHref =
+    intakePage < totalIntakePages
+      ? buildCoachHref(coachSearchParams, { assigned_page: String(assignedPage), intake_page: String(intakePage + 1) })
+      : null;
+  const intakeTabHref = buildCoachHref(coachSearchParams, {
+    tab: null,
+    assigned_page: String(assignedPage),
+    intake_page: String(intakePage),
+  });
+  const assignedTabHref = buildCoachHref(coachSearchParams, {
+    tab: "assigned",
+    assigned_page: String(assignedPage),
+    intake_page: String(intakePage),
+  });
+  const queueTabs = [
+    { key: "intake", label: "Intake Queue", count: typedUnassignedJobs.length, href: intakeTabHref },
+    { key: "assigned", label: "Assigned Jobs", count: typedJobs.length, href: assignedTabHref },
+  ] as const;
 
   async function submitManualIntake(formData: FormData) {
     "use server";
@@ -206,228 +446,201 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
   }
 
   return (
-    <main style={{ padding: "24px" }}>
-      <h1>Coach Dashboard</h1>
+    <main style={shellStyle}>
+      <div style={containerStyle}>
+        <section
+          style={{
+            ...cardStyle,
+            marginBottom: 24,
+            background: "linear-gradient(135deg, #ffffff 0%, #f6f9fc 62%, #eef6ff 100%)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+            <div>
+              <p style={{ ...mutedTextStyle, letterSpacing: "0.08em", textTransform: "uppercase", fontSize: 12 }}>
+                Coach workspace
+              </p>
+              <h1 style={{ margin: "8px 0 10px", fontSize: 36, lineHeight: 1.05, letterSpacing: "-0.04em" }}>
+                Job Search Ops Coach Dashboard
+              </h1>
+              <p style={{ ...mutedTextStyle, maxWidth: 700 }}>
+                Review intake, assign jobs to clients, and monitor ingestion runs without loading the full backlog into one giant page.
+              </p>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(120px, 1fr))",
+                gap: 12,
+                alignSelf: "stretch",
+                minWidth: 280,
+                flex: "1 1 320px",
+              }}
+            >
+              {[
+                ["Assigned jobs", String(typedJobs.length)],
+                ["Intake jobs", String(typedUnassignedJobs.length)],
+                ["Clients", String(typedClients.length)],
+              ].map(([label, value]) => (
+                <div key={label} style={{ background: "rgba(255,255,255,0.72)", border: "1px solid #d8e2ee", borderRadius: 16, padding: 16 }}>
+                  <div style={{ fontSize: 12, color: "#526071", marginBottom: 6 }}>{label}</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.03em" }}>{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
 
       {coachQueryErrorMessage ? (
         <div
           style={{
-            marginBottom: 16,
-            padding: 12,
+            ...cardStyle,
+            marginBottom: 24,
+            padding: 16,
             border: "1px solid #f59e0b",
             background: "#fffbeb",
             color: "#92400e",
-            borderRadius: 8,
           }}
         >
           <strong>Local data warning:</strong> {coachQueryErrorMessage}
         </div>
       ) : null}
 
-      <section style={{ marginBottom: 32 }}>
-        <h2>Manual Intake</h2>
-        {manualSuccess ? (
-          <p style={{ color: "#15803d", fontSize: 13, marginBottom: 10 }}>Job added to intake</p>
-        ) : null}
-        <p
-          id="manual-intake-warning"
-          style={{
-            color: "#b45309",
-            fontSize: 13,
-            marginBottom: 10,
-            display: "none",
-          }}
-        >
-          A job with this title and company already exists.
-        </p>
-        <p
-          id="manual-intake-error"
-          style={{
-            color: "#b91c1c",
-            fontSize: 13,
-            marginBottom: 10,
-            display: manualError ? "block" : "none",
-          }}
-        >
-          {manualError ?? ""}
-        </p>
-        <form
-          id="manual-intake-form"
-          action={submitManualIntake}
-          style={{ display: "grid", gap: 8, maxWidth: 480 }}
-        >
-          <input id="manual-intake-title" type="text" name="title" placeholder="Title" required />
-          <input
-            id="manual-intake-company"
-            type="text"
-            name="company"
-            placeholder="Company"
-            required
-          />
-          <input id="manual-intake-link" type="text" name="link" placeholder="Link (optional)" />
-          <button id="manual-intake-submit" type="submit" style={{ width: "fit-content" }}>
-            Add to Intake
-          </button>
-        </form>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (() => {
-                const form = document.getElementById("manual-intake-form");
-                if (!form || form.dataset.bound === "1") return;
-                form.dataset.bound = "1";
+      <section style={{ ...cardStyle, marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+          <div>
+            <h2 style={sectionTitleStyle}>Operations</h2>
+            <p style={mutedTextStyle}>Keep manual intake and scraper controls in one place, then use the queue tabs below to focus on a single workflow.</p>
+          </div>
+        </div>
+        <div style={operationsGridStyle}>
+          <div style={utilityPanelStyle}>
+            <p style={sectionEyebrowStyle}>Manual Intake</p>
+            <h3 style={{ margin: "0 0 8px", fontSize: 20 }}>Add a role to intake</h3>
+            <p style={{ ...mutedTextStyle, marginBottom: 14 }}>New jobs entered here start in the intake queue and can be assigned below.</p>
+            {manualSuccess ? (
+              <p style={{ color: "#15803d", fontSize: 13, marginBottom: 10 }}>Job added to intake</p>
+            ) : null}
+            <p
+              id="manual-intake-error"
+              style={{
+                color: "#b91c1c",
+                fontSize: 13,
+                marginBottom: 10,
+                display: manualError ? "block" : "none",
+              }}
+            >
+              {manualError ?? ""}
+            </p>
+            <form
+              id="manual-intake-form"
+              action={submitManualIntake}
+              style={{
+                display: "grid",
+                gap: 12,
+                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              }}
+            >
+              <input id="manual-intake-title" type="text" name="title" placeholder="Title" required style={inputStyle} />
+              <input
+                id="manual-intake-company"
+                type="text"
+                name="company"
+                placeholder="Company"
+                required
+                style={inputStyle}
+              />
+              <input id="manual-intake-link" type="text" name="link" placeholder="Link (optional)" style={inputStyle} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <button id="manual-intake-submit" type="submit" style={primaryButtonStyle}>
+                  Add to Intake
+                </button>
+              </div>
+            </form>
+          </div>
 
-                const titleInput = document.getElementById("manual-intake-title");
-                const companyInput = document.getElementById("manual-intake-company");
-                const linkInput = document.getElementById("manual-intake-link");
-                const submitButton = document.getElementById("manual-intake-submit");
-                const errorEl = document.getElementById("manual-intake-error");
-                const warningEl = document.getElementById("manual-intake-warning");
-                const existingJobKeys = ${JSON.stringify(existingJobKeys)};
-
-                if (!titleInput || !companyInput || !linkInput || !submitButton || !errorEl || !warningEl) return;
-
-                const setError = (message) => {
-                  if (!message) {
-                    errorEl.textContent = "";
-                    errorEl.style.display = "none";
-                    return;
-                  }
-                  errorEl.textContent = message;
-                  errorEl.style.display = "block";
-                };
-
-                const validate = () => {
-                  const title = titleInput.value.trim();
-                  const company = companyInput.value.trim();
-                  const link = linkInput.value.trim();
-
-                  if (title.length < 2) return "Title must be at least 2 characters.";
-                  if (company.length < 2) return "Company must be at least 2 characters.";
-
-                  if (link.length > 0) {
-                    try {
-                      const url = new URL(link);
-                      if (url.protocol !== "http:" && url.protocol !== "https:") {
-                        return "Link must start with http:// or https://.";
-                      }
-                    } catch {
-                      return "Link must be a valid URL.";
-                    }
-                  }
-
-                  return "";
-                };
-
-                const updateDuplicateWarning = () => {
-                  const normalizedTitle = titleInput.value.trim().toLowerCase();
-                  const normalizedCompany = companyInput.value.trim().toLowerCase();
-
-                  if (!normalizedTitle || !normalizedCompany) {
-                    warningEl.style.display = "none";
-                    return;
-                  }
-
-                  const isDuplicate = existingJobKeys.some(
-                    (job) =>
-                      job.title === normalizedTitle &&
-                      job.company === normalizedCompany
-                  );
-
-                  warningEl.style.display = isDuplicate ? "block" : "none";
-                };
-
-                titleInput.addEventListener("input", updateDuplicateWarning);
-                companyInput.addEventListener("input", updateDuplicateWarning);
-                updateDuplicateWarning();
-
-                form.addEventListener("submit", (event) => {
-                  setError("");
-                  submitButton.disabled = true;
-
-                  const error = validate();
-                  if (error) {
-                    event.preventDefault();
-                    setError(error);
-                    submitButton.disabled = false;
-                    return;
-                  }
-
-                  titleInput.value = titleInput.value.trim();
-                  companyInput.value = companyInput.value.trim();
-                  linkInput.value = linkInput.value.trim();
-                });
-              })();
-            `,
-          }}
-        />
+          <div style={utilityPanelStyle}>
+            <p style={sectionEyebrowStyle}>Scrapers</p>
+            <h3 style={{ margin: "0 0 8px", fontSize: 20 }}>Run the Greenhouse stub</h3>
+            <p style={{ ...mutedTextStyle, marginBottom: 14 }}>Trigger a manual scrape, then review the latest run state in the table below. Select a run source to inspect the jobs it touched.</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <RunGreenhouseScrapeButton />
+            </div>
+          </div>
+        </div>
       </section>
 
-      <section style={{ marginBottom: 32 }}>
-        <h2>Scraper Runs</h2>
-        <RunGreenhouseScrapeButton />
+      <section style={{ ...cardStyle, marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+          <div>
+            <h2 style={sectionTitleStyle}>Recent Ingest Runs</h2>
+            <p style={mutedTextStyle}>Track scraper health, retry failed runs, and open a run to inspect the jobs attached to it.</p>
+          </div>
+        </div>
         <IngestRunsTable />
-        <h3>Recent Ingest Runs</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Source</th>
-              <th>Status</th>
-              <th>Started At</th>
-              <th>Finished At</th>
-              <th>Job Count</th>
-              <th>Error</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {typedIngestRuns.length === 0 ? (
-              <tr>
-                <td colSpan={7}>No ingest runs found.</td>
-              </tr>
-            ) : (
-              typedIngestRuns.map((run) => (
-                <tr key={run.id}>
-                  <td>
-                    <a href={`/coach?run_id=${encodeURIComponent(run.id)}`}>{run.source}</a>
-                  </td>
-                  <td>{run.status}</td>
-                  <td>{run.started_at}</td>
-                  <td>{run.finished_at ?? "—"}</td>
-                  <td>{run.job_count}</td>
-                  <td>
-                    {run.status === "failed" && typeof run.error_message === "string"
-                      ? run.error_message
-                      : ""}
-                  </td>
-                  <td>
-                    {run.status === "failed" ? (
-                      <RetryIngestRunButton runId={run.id} />
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-        {selectedRunId ? <IngestRunJobsTable runId={selectedRunId} /> : null}
+        {selectedRunId ? <div style={{ marginTop: 18 }}><IngestRunJobsTable runId={selectedRunId} /></div> : null}
       </section>
 
-      <section style={{ marginBottom: 32 }}>
-        <h2>Unassigned Jobs (Intake)</h2>
-        {typedUnassignedJobs.length === 0 ? (
+      {activeTab === "intake" ? (
+      <section style={{ ...cardStyle, marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+          <div>
+            <p style={sectionEyebrowStyle}>Queue View</p>
+            <h2 style={sectionTitleStyle}>Intake Queue</h2>
+            <p style={mutedTextStyle}>Assign incoming roles in batches with paged results so the queue stays fast to review.</p>
+          </div>
+          <div style={{ display: "grid", gap: 10, justifyItems: "start" }}>
+            <nav aria-label="Coach queue views" style={tabListStyle}>
+              {queueTabs.map((tab) => {
+                const isActive = activeTab === tab.key;
+
+                return (
+                  <a
+                    key={tab.key}
+                    href={tab.href}
+                    aria-current={isActive ? "page" : undefined}
+                    style={{
+                      ...tabLinkBaseStyle,
+                      background: isActive ? "#ffffff" : "transparent",
+                      color: isActive ? "#0f172a" : "#526071",
+                      boxShadow: isActive ? "0 8px 18px rgba(15, 23, 42, 0.08)" : "none",
+                    }}
+                  >
+                    <span>{tab.label}</span>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        minWidth: 28,
+                        height: 28,
+                        padding: "0 8px",
+                        borderRadius: 999,
+                        background: isActive ? "#dbeafe" : "#d8e2ee",
+                        color: isActive ? "#1d4ed8" : "#334155",
+                        fontSize: 12,
+                      }}
+                    >
+                      {tab.count}
+                    </span>
+                  </a>
+                );
+              })}
+            </nav>
+            <div style={{ ...mutedTextStyle, fontWeight: 600 }}>{typedUnassignedJobs.length} roles awaiting assignment</div>
+          </div>
+        </div>
+        {paginatedIntakeJobs.length === 0 ? (
           <p>No unassigned jobs.</p>
         ) : (
-          typedUnassignedJobs.map((job) => {
-            const jobIsIntake = isIntakeJob(job.id);
-            if (!jobIsIntake) return null;
-
-            return (
-              <div key={job.id} style={{ marginBottom: 16 }}>
-                <h3>
-                  {job.title} — {job.company}{" "}
+          <div style={{ display: "grid", gap: 14 }}>
+            {paginatedIntakeJobs.map((job) => (
+              <article key={job.id} style={{ border: "1px solid #e2e8f0", borderRadius: 18, padding: 18, background: "#fdfefe" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 18 }}>{job.title}</h3>
+                    <p style={{ ...mutedTextStyle, marginTop: 4 }}>{job.company}</p>
+                  </div>
                   <span
                     style={{
                       display: "inline-block",
@@ -444,49 +657,107 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
                   >
                     Intake
                   </span>
-                </h3>
+                </div>
                 {job.link ? (
-                  <p>
-                    <a href={job.link} target="_blank" rel="noreferrer">
+                  <p style={{ marginTop: 0 }}>
+                    <a href={job.link} target="_blank" rel="noreferrer" style={{ color: "#2563eb", fontWeight: 600 }}>
                       View job posting
                     </a>
                   </p>
                 ) : null}
                 <form
-                  action={async (formData: FormData) => {
-                    "use server";
-                    const clientId = formData.get("clientId");
-                    if (typeof clientId !== "string" || clientId.length === 0) return;
-                    await assignJobToClient(job.id, clientId);
-                  }}
-                  style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}
+                  action={assignJobToClientFromForm.bind(null, job.id)}
+                  style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}
                 >
-                  <select name="clientId" defaultValue="" required>
+                  <select name="clientId" defaultValue="" required style={{ ...inputStyle, width: 240 }}>
                     <option value="" disabled>
                       Select a client
                     </option>
                     {typedClients.map((client) => (
-                      <option key={client.id} value={client.id}>
+                      <option key={client.id} value={client.auth_user_id ?? client.id}>
                         {client.name}
                       </option>
                     ))}
                   </select>
-                  <button type="submit">Assign</button>
+                  <button type="submit" style={primaryButtonStyle}>Assign</button>
                 </form>
-              </div>
-            );
-          })
+              </article>
+            ))}
+          </div>
         )}
+        {renderPager({ currentPage: intakePage, totalPages: totalIntakePages, previousHref: intakePreviousHref, nextHref: intakeNextHref, label: "Intake queue" })}
       </section>
+      ) : null}
 
-      {typedJobs.map((job) => (
-        <div key={job.id} style={{ marginBottom: 24 }}>
-          <h3>
-            {job.title} — {job.company}
-          </h3>
-          <p>Current Lane: {job.lane}</p>
-          <p>Status: {job.client_status}</p>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>
+      {activeTab === "assigned" ? (
+      <section style={cardStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+          <div>
+            <p style={sectionEyebrowStyle}>Queue View</p>
+            <h2 style={sectionTitleStyle}>Assigned Jobs</h2>
+            <p style={mutedTextStyle}>Review the assigned backlog in smaller pages and move roles through lanes without flooding the browser.</p>
+          </div>
+          <div style={{ display: "grid", gap: 10, justifyItems: "start" }}>
+            <nav aria-label="Coach queue views" style={tabListStyle}>
+              {queueTabs.map((tab) => {
+                const isActive = activeTab === tab.key;
+
+                return (
+                  <a
+                    key={tab.key}
+                    href={tab.href}
+                    aria-current={isActive ? "page" : undefined}
+                    style={{
+                      ...tabLinkBaseStyle,
+                      background: isActive ? "#ffffff" : "transparent",
+                      color: isActive ? "#0f172a" : "#526071",
+                      boxShadow: isActive ? "0 8px 18px rgba(15, 23, 42, 0.08)" : "none",
+                    }}
+                  >
+                    <span>{tab.label}</span>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        minWidth: 28,
+                        height: 28,
+                        padding: "0 8px",
+                        borderRadius: 999,
+                        background: isActive ? "#dbeafe" : "#d8e2ee",
+                        color: isActive ? "#1d4ed8" : "#334155",
+                        fontSize: 12,
+                      }}
+                    >
+                      {tab.count}
+                    </span>
+                  </a>
+                );
+              })}
+            </nav>
+            <div style={{ ...mutedTextStyle, fontWeight: 600 }}>{typedJobs.length} assigned roles</div>
+          </div>
+        </div>
+        {paginatedAssignedJobs.length === 0 ? <p style={mutedTextStyle}>No assigned jobs yet.</p> : null}
+        {paginatedAssignedJobs.map((job) => (
+        <article key={job.id} style={{ marginBottom: 16, border: "1px solid #e2e8f0", borderRadius: 18, padding: 18, background: "#fff" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 18 }}>
+                {job.title}
+              </h3>
+              <p style={{ ...mutedTextStyle, marginTop: 4 }}>{job.company}</p>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", padding: "6px 10px", borderRadius: 999, background: "#e2e8f0", fontSize: 12, fontWeight: 700, color: "#334155" }}>
+                Lane: {job.lane ?? "—"}
+              </span>
+              <span style={{ display: "inline-flex", alignItems: "center", padding: "6px 10px", borderRadius: 999, background: "#eff6ff", fontSize: 12, fontWeight: 700, color: "#1d4ed8" }}>
+                Status: {job.client_status ?? "—"}
+              </span>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: "#6b7280", margin: "10px 0 12px" }}>
             Coach-controlled: used to organize the job search
           </div>
 
@@ -499,14 +770,16 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
                   await updateJobLane(job.id, lane);
                 }}
               >
-                <button type="submit">{lane}</button>
+                <button type="submit" style={secondaryButtonStyle}>{lane}</button>
               </form>
             ))}
           </div>
-
-          <hr style={{ margin: "16px 0" }} />
-        </div>
+        </article>
       ))}
+        {renderPager({ currentPage: assignedPage, totalPages: totalAssignedPages, previousHref: assignedPreviousHref, nextHref: assignedNextHref, label: "Assigned jobs" })}
+      </section>
+      ) : null}
+      </div>
     </main>
   );
 }

@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { ingestJob } from "@/lib/ingest/ingestJob";
-import { startIngestRun, completeIngestRun, failIngestRun } from "@/lib/ingest/ingestRun";
+import { startIngestRun, completeIngestRun, failIngestRun, serializeIngestError } from "@/lib/ingest/ingestRun";
 import { runGreenhouseStub } from "@/lib/scrapers/greenhouseStub";
 
 type RouterIngestBody = {
@@ -284,7 +284,7 @@ export async function POST(req: Request) {
       try {
         await failIngestRun({
           ingest_run_id: ingestRunId,
-          error_message: error instanceof Error ? error.message : String(error),
+          error_message: serializeIngestError(error),
           supabase,
         });
       } catch (failError) {

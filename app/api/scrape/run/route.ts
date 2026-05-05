@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { startIngestRun } from "@/lib/ingest/ingestRun";
+import { serializeIngestError, startIngestRun } from "@/lib/ingest/ingestRun";
 import { ingestJob } from "@/lib/ingest/ingestJob";
 import { getGreenhouseStubJobs } from "@/lib/scrapers/greenhouseStub";
 
@@ -78,8 +78,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, ingest_run_id, ingested });
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : JSON.stringify(err);
-    const errorString = typeof errorMessage === "string" ? errorMessage : String(errorMessage);
+    const errorString = serializeIngestError(err);
 
     await supabase
       .from("ingest_runs")

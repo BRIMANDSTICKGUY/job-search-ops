@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { JobSourceType } from "@/app/types";
+import { serializeIngestError } from "@/lib/ingest/ingestRun";
 import { evaluateJobForClient, JOB_ASSIGNMENT_THRESHOLD } from "@/lib/scoring/evaluateJobForClient";
 
 type IngestionSource = {
@@ -78,7 +79,7 @@ async function hardenedFetch(url: string): Promise<HardenedFetchResult> {
     });
     return { ok: true, res };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = serializeIngestError(error);
     return { ok: false, errorMessage: message || "Fetch failed" };
   } finally {
     clearTimeout(timeoutId);

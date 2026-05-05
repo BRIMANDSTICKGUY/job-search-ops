@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { deny } from "@/lib/api/guard";
+import { serializeIngestError } from "@/lib/ingest/ingestRun";
 
 type ScrapeRunResponse = {
   ok?: boolean;
@@ -141,7 +142,7 @@ export async function POST(req: Request) {
       duplicates: payload.duplicates,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = serializeIngestError(error);
     const stack = error instanceof Error ? error.stack : undefined;
     const cause =
       error instanceof Error && "cause" in error

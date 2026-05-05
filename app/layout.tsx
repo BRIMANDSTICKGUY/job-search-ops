@@ -1,5 +1,6 @@
 import "./globals.css";
 import ClientProviders from "./client/ClientProviders";
+import { AppNavigation } from "@/components/AppNavigation";
 
 export default function RootLayout({
   children,
@@ -10,6 +11,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <ClientProviders />
+        <AppNavigation />
         {children}
       </body>
     </html>

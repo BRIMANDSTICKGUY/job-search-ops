@@ -2,6 +2,66 @@
 
 import { useEffect, useState } from "react";
 
+const tableWrapStyle: React.CSSProperties = {
+  overflowX: "auto",
+  border: "1px solid #e2e8f0",
+  borderRadius: 16,
+  background: "#ffffff",
+};
+
+const tableStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 720,
+  borderCollapse: "collapse",
+};
+
+const headerCellStyle: React.CSSProperties = {
+  textAlign: "left",
+  padding: "12px 14px",
+  background: "#f8fafc",
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: "#526071",
+};
+
+const bodyCellStyle: React.CSSProperties = {
+  padding: "12px 14px",
+  borderTop: "1px solid #e2e8f0",
+  fontSize: 14,
+  color: "#0f172a",
+  verticalAlign: "top",
+};
+
+const mutedCellStyle: React.CSSProperties = {
+  ...bodyCellStyle,
+  color: "#526071",
+};
+
+const sourceLinkStyle: React.CSSProperties = {
+  color: "#0f172a",
+  fontWeight: 700,
+  textDecoration: "none",
+};
+
+const actionButtonStyle: React.CSSProperties = {
+  border: "1px solid #cbd5e1",
+  borderRadius: 12,
+  background: "#fff",
+  color: "#0f172a",
+  padding: "9px 14px",
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const statusPillStyles: Record<string, React.CSSProperties> = {
+  completed: { background: "#dcfce7", color: "#166534" },
+  failed: { background: "#fee2e2", color: "#991b1b" },
+  running: { background: "#dbeafe", color: "#1d4ed8" },
+};
+
 type IngestRun = {
   id: string;
   source: string;
@@ -31,6 +91,55 @@ type RetryIngestRunButtonProps = {
   runId: string;
   onDone?: () => Promise<void> | void;
 };
+
+function formatTimestamp(value: string | null | undefined): string {
+  if (!value) return "—";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+
+  return parsed.toLocaleString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function extractStructuredErrorMessage(value: string): string | null {
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object") return null;
+
+    const candidates = [parsed.message, parsed.error, parsed.details, parsed.hint, parsed.code];
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+function formatErrorMessage(value: unknown): string {
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) return "—";
+    if (normalized === "[object Object]") return "Legacy error details unavailable";
+    const structured = extractStructuredErrorMessage(normalized);
+    if (structured) return structured;
+    return normalized;
+  }
+  if (value == null) return "—";
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
 
 export function RetryIngestRunButton({ runId, onDone }: RetryIngestRunButtonProps) {
   const [isRetrying, setIsRetrying] = useState(false);
@@ -68,7 +177,7 @@ export function RetryIngestRunButton({ runId, onDone }: RetryIngestRunButtonProp
 
   return (
     <div>
-      <button type="button" onClick={onRetry} disabled={isRetrying}>
+      <button type="button" onClick={onRetry} disabled={isRetrying} style={actionButtonStyle}>
         {isRetrying ? "Retrying..." : "Retry"}
       </button>
       {message ? <div style={{ fontSize: 12, color: "#15803d" }}>{message}</div> : null}
@@ -118,50 +227,78 @@ export function IngestRunsTable() {
   }, []);
 
   return (
-    <section style={{ marginBottom: 32 }}>
-      <h2>Recent Ingest Runs</h2>
-      {loading ? <p>Loading ingest runs...</p> : null}
-      {error ? <p style={{ color: "#b91c1c" }}>{error}</p> : null}
+    <>
+      {loading ? <p style={{ margin: "0 0 12px", color: "#526071", fontSize: 14 }}>Loading ingest runs...</p> : null}
+      {error ? <p style={{ margin: "0 0 12px", color: "#b91c1c", fontSize: 14 }}>{error}</p> : null}
       {!loading && !error ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Source</th>
-              <th>Status</th>
-              <th>Started At</th>
-              <th>Finished At</th>
-              <th>Job Count</th>
-              <th>Error</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {runs.length === 0 ? (
+        <div style={tableWrapStyle}>
+          <table style={tableStyle}>
+            <thead>
               <tr>
-                <td colSpan={7}>No ingest runs found.</td>
+                <th style={headerCellStyle}>Source</th>
+                <th style={headerCellStyle}>Status</th>
+                <th style={headerCellStyle}>Started At</th>
+                <th style={headerCellStyle}>Finished At</th>
+                <th style={headerCellStyle}>Job Count</th>
+                <th style={headerCellStyle}>Error</th>
+                <th style={headerCellStyle}>Actions</th>
               </tr>
-            ) : (
-              runs.map((run) => (
-                <tr key={run.id}>
-                  <td>{run.source}</td>
-                  <td>{run.status}</td>
-                  <td>{run.started_at}</td>
-                  <td>{run.finished_at ?? "—"}</td>
-                  <td>{run.job_count}</td>
-                  <td>{run.error_message ?? "—"}</td>
-                  <td>
-                    {run.status === "failed" ? (
-                      <RetryIngestRunButton runId={run.id} onDone={loadRuns} />
-                    ) : (
-                      "—"
-                    )}
-                  </td>
+            </thead>
+            <tbody>
+              {runs.length === 0 ? (
+                <tr>
+                  <td colSpan={7} style={mutedCellStyle}>No ingest runs found.</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                runs.map((run) => {
+                  const normalizedStatus = run.status.toLowerCase();
+                  const statusPillStyle = statusPillStyles[normalizedStatus] ?? {
+                    background: "#e2e8f0",
+                    color: "#334155",
+                  };
+
+                  return (
+                    <tr key={run.id}>
+                      <td style={bodyCellStyle}>
+                        <a href={`/coach?run_id=${encodeURIComponent(run.id)}`} style={sourceLinkStyle}>
+                          {run.source}
+                        </a>
+                      </td>
+                      <td style={bodyCellStyle}>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            padding: "4px 10px",
+                            borderRadius: 999,
+                            fontSize: 12,
+                            fontWeight: 700,
+                            textTransform: "capitalize",
+                            ...statusPillStyle,
+                          }}
+                        >
+                          {run.status}
+                        </span>
+                      </td>
+                      <td style={bodyCellStyle}>{formatTimestamp(run.started_at)}</td>
+                      <td style={mutedCellStyle}>{formatTimestamp(run.finished_at)}</td>
+                      <td style={bodyCellStyle}>{run.job_count}</td>
+                      <td style={{ ...mutedCellStyle, maxWidth: 300 }}>{formatErrorMessage(run.error_message)}</td>
+                      <td style={bodyCellStyle}>
+                        {run.status === "failed" ? (
+                          <RetryIngestRunButton runId={run.id} onDone={loadRuns} />
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       ) : null}
-    </section>
+    </>
   );
 }
