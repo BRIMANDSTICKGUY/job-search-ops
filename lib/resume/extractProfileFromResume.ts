@@ -1,5 +1,7 @@
 import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
+import WordExtractor from "word-extractor";
+import { ALL_JOB_ROLE_OPTIONS } from "@/lib/profile/jobRoleCatalog";
 
 export type ExtractedResumeProfile = {
   file_name: string;
@@ -35,28 +37,64 @@ const ROLE_PATTERNS: RolePattern[] = [
     ],
   },
   {
+    label: "Frontend Engineer",
+    keywords: ["frontend engineer", "front-end engineer", "frontend developer", "ui engineer"],
+  },
+  {
+    label: "Backend Engineer",
+    keywords: ["backend engineer", "back-end engineer", "backend developer", "api engineer"],
+  },
+  {
+    label: "Full Stack Engineer",
+    keywords: ["full stack engineer", "full-stack engineer", "full stack developer"],
+  },
+  {
     label: "Product Manager",
     keywords: ["product manager", "product management", "product owner", "roadmap"],
   },
   {
+    label: "Program Manager",
+    keywords: ["program manager", "technical program manager", "delivery manager"],
+  },
+  {
     label: "Project Manager",
-    keywords: ["project manager", "program manager", "pmp", "delivery manager"],
+    keywords: ["project manager", "pmp", "implementation manager"],
   },
   {
     label: "Data Analyst",
     keywords: ["data analyst", "business analyst", "reporting analyst", "analytics"],
   },
   {
+    label: "Business Analyst",
+    keywords: ["business analyst", "business systems analyst", "requirements analyst"],
+  },
+  {
     label: "Data Scientist",
     keywords: ["data scientist", "machine learning", "statistical model", "predictive"],
+  },
+  {
+    label: "Data Engineer",
+    keywords: ["data engineer", "etl engineer", "analytics engineer", "pipeline engineering"],
   },
   {
     label: "UX Designer",
     keywords: ["ux designer", "product designer", "ui designer", "interaction design"],
   },
   {
+    label: "Graphic Designer",
+    keywords: ["graphic designer", "brand designer", "visual designer"],
+  },
+  {
     label: "Marketing Manager",
     keywords: ["marketing manager", "growth marketing", "demand generation", "brand strategy"],
+  },
+  {
+    label: "Account Executive",
+    keywords: ["account executive", "enterprise seller", "closing sales"],
+  },
+  {
+    label: "Business Development Manager",
+    keywords: ["business development", "partnerships manager", "strategic partnerships"],
   },
   {
     label: "Sales Manager",
@@ -71,12 +109,28 @@ const ROLE_PATTERNS: RolePattern[] = [
     keywords: ["operations manager", "business operations", "ops manager", "process improvement"],
   },
   {
+    label: "Operations Analyst",
+    keywords: ["operations analyst", "process analyst", "workforce analyst"],
+  },
+  {
     label: "Recruiter",
     keywords: ["recruiter", "talent acquisition", "sourcing", "candidate pipeline"],
   },
   {
+    label: "HR Manager",
+    keywords: ["hr manager", "human resources", "people operations", "employee relations"],
+  },
+  {
     label: "Finance Manager",
     keywords: ["finance manager", "financial analyst", "fp&a", "budgeting"],
+  },
+  {
+    label: "Financial Analyst",
+    keywords: ["financial analyst", "finance analyst", "variance analysis", "forecasting"],
+  },
+  {
+    label: "Compliance Manager",
+    keywords: ["compliance manager", "risk management", "regulatory compliance"],
   },
 ];
 
@@ -245,18 +299,28 @@ function extractDealbreakers(text: string): string[] {
   return items;
 }
 
+async function extractWordDocumentText(bytes: Buffer): Promise<string> {
+  const extractor = new WordExtractor();
+  const document = await extractor.extract(bytes);
+  return normalizeWhitespace(document.getBody());
+}
+
 export async function extractTextFromResumeFile(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
   const bytes = Buffer.from(arrayBuffer);
   const lowerName = file.name.toLowerCase();
 
   if (file.type === "application/pdf" || lowerName.endsWith(".pdf")) {
-    const parser = new PDFParse({ data: bytes });
     try {
-      const result = await parser.getText();
-      return normalizeWhitespace(result.text);
-    } finally {
-      await parser.destroy();
+      const parser = new PDFParse({ data: bytes });
+      try {
+        const result = await parser.getText();
+        return normalizeWhitespace(result.text);
+      } finally {
+        await parser.destroy();
+      }
+    } catch {
+      throw new Error("This PDF could not be read. Try a DOCX, DOC, or text export of the resume.");
     }
   }
 
@@ -264,8 +328,20 @@ export async function extractTextFromResumeFile(file: File): Promise<string> {
     file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     lowerName.endsWith(".docx")
   ) {
-    const result = await mammoth.extractRawText({ buffer: bytes });
-    return normalizeWhitespace(result.value);
+    try {
+      const result = await mammoth.extractRawText({ buffer: bytes });
+      return normalizeWhitespace(result.value);
+    } catch {
+      return extractWordDocumentText(bytes);
+    }
+  }
+
+  if (file.type === "application/msword" || lowerName.endsWith(".doc")) {
+    try {
+      return await extractWordDocumentText(bytes);
+    } catch {
+      throw new Error("This DOC file could not be read. Try saving it as DOCX or PDF and upload again.");
+    }
   }
 
   if (
@@ -288,10 +364,17 @@ export function extractProfileFromResumeText(
   const lowerText = normalizedText.toLowerCase();
   const scoredRoles = scoreRoles(lowerText);
 
+  const primaryRole = scoredRoles[0]?.label ?? "Other / Generalist";
+  const secondaryRole = scoredRoles[1]?.label ?? "";
+
   return {
     file_name: fileName,
-    primary_role: scoredRoles[0]?.label ?? "",
-    secondary_role: scoredRoles[1]?.label ?? "",
+    primary_role: ALL_JOB_ROLE_OPTIONS.includes(primaryRole as (typeof ALL_JOB_ROLE_OPTIONS)[number])
+      ? primaryRole
+      : "Other / Generalist",
+    secondary_role: ALL_JOB_ROLE_OPTIONS.includes(secondaryRole as (typeof ALL_JOB_ROLE_OPTIONS)[number])
+      ? secondaryRole
+      : "",
     career_level: extractCareerLevel(lowerText),
     core_skills: extractTerms(lowerText, SKILL_TERMS, 10),
     industry_keywords: extractTerms(lowerText, INDUSTRY_TERMS, 6),

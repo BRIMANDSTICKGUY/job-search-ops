@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ClientJobsTable } from "@/components/ClientJobsTable";
-import { ClientProfileForm } from "@/components/ClientProfileForm";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
 type ClientJob = {
@@ -118,9 +118,36 @@ export default function ClientDashboard() {
             boxShadow: "0 16px 40px rgba(15, 23, 42, 0.05)",
             padding: 24,
             marginBottom: 20,
+            display: "grid",
+            gap: 10,
           }}
         >
-          <ClientProfileForm />
+          <p style={{ margin: 0, color: "#64748b", fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            Profile
+          </p>
+          <h2 style={{ margin: 0, fontSize: 24, letterSpacing: "-0.03em" }}>Keep your role targets current</h2>
+          <p style={{ margin: 0, color: "#526071", lineHeight: 1.6 }}>
+            Update your primary and secondary job focus, import a resume, and refine the industries you want to target from the dedicated profile workspace.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 6 }}>
+            <Link
+              href="/client/profile"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: 44,
+                padding: "0 18px",
+                borderRadius: 999,
+                background: "#0f172a",
+                color: "#ffffff",
+                textDecoration: "none",
+                fontWeight: 700,
+              }}
+            >
+              Open profile workspace
+            </Link>
+          </div>
         </section>
 
         <ClientJobsTable jobs={jobs} />

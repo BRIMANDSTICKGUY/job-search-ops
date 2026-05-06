@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
+import { JOB_ROLE_GROUPS, isKnownJobRole } from "@/lib/profile/jobRoleCatalog";
 
 type CareerLevel = "early" | "mid" | "senior" | "executive";
 type RemotePreference = "remote" | "hybrid" | "onsite" | "all";
@@ -134,6 +135,69 @@ function splitCsv(value: string): string[] {
 function mergeCsvStrings(existing: string, incoming: string[]): string {
   const merged = Array.from(new Set([...splitCsv(existing), ...incoming]));
   return merged.join(", ");
+}
+
+const sectionStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 16,
+  padding: 20,
+  borderRadius: 18,
+  border: "1px solid #dbe4f0",
+  background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 8,
+  fontSize: 13,
+  fontWeight: 700,
+  color: "#334155",
+};
+
+const fieldStyle: React.CSSProperties = {
+  width: "100%",
+  minHeight: 46,
+  padding: "12px 14px",
+  borderRadius: 14,
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+  color: "#0f172a",
+  fontSize: 14,
+  outline: "none",
+};
+
+const helperStyle: React.CSSProperties = {
+  margin: 0,
+  color: "#64748b",
+  fontSize: 12,
+  lineHeight: 1.5,
+};
+
+const actionButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: 44,
+  padding: "0 18px",
+  borderRadius: 999,
+  border: "1px solid #0f172a",
+  background: "#0f172a",
+  color: "#ffffff",
+  fontSize: 14,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+function renderRoleOptions() {
+  return JOB_ROLE_GROUPS.map((group) => (
+    <optgroup key={group.label} label={group.label}>
+      {group.options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </optgroup>
+  ));
 }
 
 export function ClientProfileForm() {
@@ -341,8 +405,14 @@ export function ClientProfileForm() {
 
       const extracted = payload.extracted;
       setForm((prev) => ({
-        primary_role: extracted.primary_role || prev.primary_role,
-        secondary_role: extracted.secondary_role || prev.secondary_role,
+        primary_role:
+          extracted.primary_role && isKnownJobRole(extracted.primary_role)
+            ? extracted.primary_role
+            : prev.primary_role,
+        secondary_role:
+          extracted.secondary_role && isKnownJobRole(extracted.secondary_role)
+            ? extracted.secondary_role
+            : prev.secondary_role,
         career_level: extracted.career_level || prev.career_level,
         core_skills: mergeCsvStrings(prev.core_skills, extracted.core_skills),
         industry_keywords: mergeCsvStrings(prev.industry_keywords, extracted.industry_keywords),
@@ -370,11 +440,13 @@ export function ClientProfileForm() {
   }
 
   return (
-    <section style={{ marginBottom: 24 }}>
-      <h2>Profile</h2>
-      <p style={{ marginTop: 0, color: "#526071", lineHeight: 1.5 }}>
-        Upload a resume to draft your role targets, then review the extracted fields before saving.
-      </p>
+    <section style={{ display: "grid", gap: 18, marginBottom: 24 }}>
+      <div>
+        <h2 style={{ margin: "0 0 8px", fontSize: 26, letterSpacing: "-0.03em" }}>Profile</h2>
+        <p style={{ margin: 0, color: "#526071", lineHeight: 1.6 }}>
+          Use your resume to draft role targets, then refine your search profile with structured job categories and clear preferences.
+        </p>
+      </div>
       {latestResumeUpload ? (
         <p style={{ marginTop: 0, color: "#526071", fontSize: 13, lineHeight: 1.5 }}>
           Latest import: {latestResumeUpload.file_name} on {new Date(latestResumeUpload.created_at).toLocaleString()}.
@@ -383,116 +455,185 @@ export function ClientProfileForm() {
       {error ? <p style={{ color: "#b91c1c" }}>{error}</p> : null}
       {warning ? <p style={{ color: "#92400e" }}>{warning}</p> : null}
       {success ? <p style={{ color: "#15803d" }}>{success}</p> : null}
-      <div
-        style={{
-          display: "grid",
-          gap: 8,
-          maxWidth: 640,
-          marginBottom: 16,
-          padding: 14,
-          border: "1px solid #dbe4f0",
-          borderRadius: 12,
-          background: "#f8fbff",
-        }}
-      >
+      <div style={sectionStyle}>
+        <div style={{ display: "grid", gap: 6 }}>
+          <p style={{ margin: 0, color: "#64748b", fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            Resume Import
+          </p>
+          <h3 style={{ margin: 0, fontSize: 20, letterSpacing: "-0.03em" }}>Parse your resume into a search profile</h3>
+          <p style={{ ...helperStyle, fontSize: 13 }}>
+            Upload PDF, DOCX, DOC, TXT, MD, or RTF. If a file format is difficult to parse, exporting to DOCX usually works best.
+          </p>
+        </div>
         <input
           type="file"
-          accept=".pdf,.docx,.txt,.md,.rtf"
+          accept=".pdf,.doc,.docx,.txt,.md,.rtf"
+          style={fieldStyle}
           onChange={(event) => setResumeFile(event.target.files?.[0] ?? null)}
         />
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <button type="button" onClick={onUploadResume} disabled={uploadingResume || loading}>
+          <button type="button" onClick={onUploadResume} disabled={uploadingResume || loading} style={actionButtonStyle}>
             {uploadingResume ? "Reading Resume..." : "Import Resume"}
           </button>
           <span style={{ color: "#64748b", fontSize: 13 }}>
-            Supports PDF, DOCX, TXT, MD, and RTF up to 5MB.
+            Supports PDF, DOCX, DOC, TXT, MD, and RTF up to 5MB.
           </span>
         </div>
         {resumePreview ? (
-          <p style={{ margin: 0, color: "#526071", fontSize: 13, lineHeight: 1.5 }}>
+          <p style={{ margin: 0, color: "#526071", fontSize: 13, lineHeight: 1.6 }}>
             Preview: {resumePreview}
           </p>
         ) : null}
       </div>
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, maxWidth: 640 }}>
-        <input
-          type="text"
-          placeholder="Primary role"
-          value={form.primary_role}
-          onChange={(e) => setForm((prev) => ({ ...prev, primary_role: e.target.value }))}
-          required
-        />
-        <input
-          type="text"
-          placeholder="Secondary role (optional)"
-          value={form.secondary_role}
-          onChange={(e) => setForm((prev) => ({ ...prev, secondary_role: e.target.value }))}
-        />
-        <select
-          value={form.career_level}
-          onChange={(e) =>
-            setForm((prev) => ({ ...prev, career_level: e.target.value as "" | CareerLevel }))
-          }
-        >
-          <option value="">Career level (optional)</option>
-          <option value="early">Early</option>
-          <option value="mid">Mid</option>
-          <option value="senior">Senior</option>
-          <option value="executive">Executive</option>
-        </select>
-        <input
-          type="text"
-          placeholder="Core skills (comma-separated)"
-          value={form.core_skills}
-          onChange={(e) => setForm((prev) => ({ ...prev, core_skills: e.target.value }))}
-        />
-        <input
-          type="text"
-          placeholder="Industry keywords (comma-separated)"
-          value={form.industry_keywords}
-          onChange={(e) => setForm((prev) => ({ ...prev, industry_keywords: e.target.value }))}
-        />
-        <input
-          type="text"
-          placeholder="Preferred locations (comma-separated)"
-          value={form.preferred_locations}
-          onChange={(e) => setForm((prev) => ({ ...prev, preferred_locations: e.target.value }))}
-        />
-        <select
-          value={form.remote_preference}
-          onChange={(e) =>
-            setForm((prev) => ({
-              ...prev,
-              remote_preference: e.target.value as RemotePreference,
-            }))
-          }
-        >
-          <option value="remote">Remote</option>
-          <option value="hybrid">Hybrid</option>
-          <option value="onsite">Onsite</option>
-          <option value="all">All</option>
-        </select>
-        <input
-          type="number"
-          placeholder="Salary min"
-          value={form.salary_min}
-          onChange={(e) => setForm((prev) => ({ ...prev, salary_min: e.target.value }))}
-        />
-        <input
-          type="number"
-          placeholder="Salary max"
-          value={form.salary_max}
-          onChange={(e) => setForm((prev) => ({ ...prev, salary_max: e.target.value }))}
-        />
-        <input
-          type="text"
-          placeholder="Dealbreakers (comma-separated)"
-          value={form.dealbreakers}
-          onChange={(e) => setForm((prev) => ({ ...prev, dealbreakers: e.target.value }))}
-        />
-        <button type="submit" disabled={saving} style={{ width: "fit-content" }}>
+      <form onSubmit={onSubmit} style={{ display: "grid", gap: 18 }}>
+        <div style={sectionStyle}>
+          <div style={{ display: "grid", gap: 6 }}>
+            <p style={{ margin: 0, color: "#64748b", fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Role Targets
+            </p>
+            <h3 style={{ margin: 0, fontSize: 20, letterSpacing: "-0.03em" }}>Choose your primary and secondary job focus</h3>
+          </div>
+          <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+            <label style={labelStyle}>
+              Primary role
+              <select
+                value={form.primary_role}
+                style={fieldStyle}
+                onChange={(e) => setForm((prev) => ({ ...prev, primary_role: e.target.value }))}
+                required
+              >
+                <option value="">Select a primary role</option>
+                {renderRoleOptions()}
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Secondary role
+              <select
+                value={form.secondary_role}
+                style={fieldStyle}
+                onChange={(e) => setForm((prev) => ({ ...prev, secondary_role: e.target.value }))}
+              >
+                <option value="">Select a secondary role</option>
+                {renderRoleOptions()}
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Career level
+              <select
+                value={form.career_level}
+                style={fieldStyle}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, career_level: e.target.value as "" | CareerLevel }))
+                }
+              >
+                <option value="">Career level (optional)</option>
+                <option value="early">Early</option>
+                <option value="mid">Mid</option>
+                <option value="senior">Senior</option>
+                <option value="executive">Executive</option>
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Remote preference
+              <select
+                value={form.remote_preference}
+                style={fieldStyle}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    remote_preference: e.target.value as RemotePreference,
+                  }))
+                }
+              >
+                <option value="remote">Remote</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="onsite">Onsite</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div style={sectionStyle}>
+          <div style={{ display: "grid", gap: 6 }}>
+            <p style={{ margin: 0, color: "#64748b", fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Search Preferences
+            </p>
+            <h3 style={{ margin: 0, fontSize: 20, letterSpacing: "-0.03em" }}>Refine the roles you want to see</h3>
+          </div>
+          <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+            <label style={labelStyle}>
+              Core skills
+              <input
+                type="text"
+                style={fieldStyle}
+                placeholder="SQL, stakeholder management, React"
+                value={form.core_skills}
+                onChange={(e) => setForm((prev) => ({ ...prev, core_skills: e.target.value }))}
+              />
+              <p style={helperStyle}>Comma-separated skills used for role matching.</p>
+            </label>
+            <label style={labelStyle}>
+              Industry keywords
+              <input
+                type="text"
+                style={fieldStyle}
+                placeholder="Fintech, healthcare, logistics"
+                value={form.industry_keywords}
+                onChange={(e) => setForm((prev) => ({ ...prev, industry_keywords: e.target.value }))}
+              />
+              <p style={helperStyle}>Use industries or domain themes you want prioritized.</p>
+            </label>
+            <label style={labelStyle}>
+              Preferred locations
+              <input
+                type="text"
+                style={fieldStyle}
+                placeholder="Atlanta, Remote, Chicago"
+                value={form.preferred_locations}
+                onChange={(e) => setForm((prev) => ({ ...prev, preferred_locations: e.target.value }))}
+              />
+              <p style={helperStyle}>Comma-separated cities, regions, or “Remote”.</p>
+            </label>
+            <label style={labelStyle}>
+              Dealbreakers
+              <input
+                type="text"
+                style={fieldStyle}
+                placeholder="No relocation, remote only"
+                value={form.dealbreakers}
+                onChange={(e) => setForm((prev) => ({ ...prev, dealbreakers: e.target.value }))}
+              />
+              <p style={helperStyle}>Any constraints the coach should respect.</p>
+            </label>
+            <label style={labelStyle}>
+              Salary minimum
+              <input
+                type="number"
+                style={fieldStyle}
+                placeholder="90000"
+                value={form.salary_min}
+                onChange={(e) => setForm((prev) => ({ ...prev, salary_min: e.target.value }))}
+              />
+            </label>
+            <label style={labelStyle}>
+              Salary maximum
+              <input
+                type="number"
+                style={fieldStyle}
+                placeholder="140000"
+                value={form.salary_max}
+                onChange={(e) => setForm((prev) => ({ ...prev, salary_max: e.target.value }))}
+              />
+            </label>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-start" }}>
+          <button type="submit" disabled={saving} style={actionButtonStyle}>
           {saving ? "Saving..." : hasProfile ? "Update Profile" : "Create Profile"}
         </button>
+        </div>
       </form>
     </section>
   );
