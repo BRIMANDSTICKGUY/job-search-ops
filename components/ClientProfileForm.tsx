@@ -108,6 +108,11 @@ type FormState = {
   dealbreakers: string;
 };
 
+type ToastState = {
+  tone: "success" | "error";
+  message: string;
+};
+
 const DEFAULT_STATE: FormState = {
   primary_role: "",
   secondary_role: "",
@@ -188,6 +193,18 @@ const actionButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+const toastBaseStyle: React.CSSProperties = {
+  width: "100%",
+  maxWidth: 640,
+  padding: "14px 16px",
+  borderRadius: 16,
+  boxShadow: "0 12px 24px rgba(15, 23, 42, 0.08)",
+  border: "1px solid transparent",
+  fontSize: 14,
+  fontWeight: 700,
+  lineHeight: 1.5,
+};
+
 function renderRoleOptions() {
   return JOB_ROLE_GROUPS.map((group) => (
     <optgroup key={group.label} label={group.label}>
@@ -211,7 +228,20 @@ export function ClientProfileForm() {
   const [resumePreview, setResumePreview] = useState<string | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [latestResumeUpload, setLatestResumeUpload] = useState<ResumeUploadResponse["resume_upload"]>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_STATE);
+
+  useEffect(() => {
+    if (!toast) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setToast(null);
+    }, 3600);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [toast]);
 
   useEffect(() => {
     let active = true;
@@ -270,19 +300,31 @@ export function ClientProfileForm() {
           setForm(DEFAULT_STATE);
         }
 
-        const resumeRes = await fetch("/api/client/profile/resume", {
-          method: "GET",
-          headers: { authorization: `Bearer ${token}` },
-          cache: "no-store",
-        });
+        try {
+          const resumeRes = await fetch("/api/client/profile/resume", {
+            method: "GET",
+            headers: { authorization: `Bearer ${token}` },
+            cache: "no-store",
+          });
 
-        const resumePayload = (await resumeRes.json()) as ResumeUploadResponse;
-        if (resumeRes.ok && resumePayload.ok) {
-          setLatestResumeUpload(resumePayload.resume_upload ?? null);
-          setResumePreview(resumePayload.resume_upload?.extracted_profile.text_preview ?? null);
-          if (resumePayload.persistence_available === false) {
-            setWarning("Resume upload history will appear after the database migration is applied. You can still import suggestions into the form now.");
+          const resumePayload = (await resumeRes.json()) as ResumeUploadResponse;
+          if (resumeRes.ok && resumePayload.ok) {
+            setLatestResumeUpload(resumePayload.resume_upload ?? null);
+            setResumePreview(resumePayload.resume_upload?.extracted_profile.text_preview ?? null);
+            if (resumePayload.persistence_available === false) {
+              setWarning("Resume upload history will appear after the database migration is applied. You can still import suggestions into the form now.");
+            }
+          } else {
+            setLatestResumeUpload(null);
+            setResumePreview(null);
           }
+        } catch {
+          if (!active) return;
+          setLatestResumeUpload(null);
+          setResumePreview(null);
+          setWarning((currentWarning) =>
+            currentWarning ?? "Your profile loaded, but resume history is temporarily unavailable."
+          );
         }
       } catch {
         if (!active) return;
@@ -366,6 +408,7 @@ export function ClientProfileForm() {
   async function onUploadResume() {
     if (!resumeFile) {
       setError("Choose a resume file to import");
+      setToast({ tone: "error", message: "Choose a resume file before importing." });
       return;
     }
 
@@ -382,6 +425,7 @@ export function ClientProfileForm() {
       const token = session?.access_token;
       if (!token) {
         setError("Unauthorized");
+        setToast({ tone: "error", message: "Your session expired. Sign in again to import a resume." });
         setUploadingResume(false);
         return;
       }
@@ -400,6 +444,7 @@ export function ClientProfileForm() {
       const payload = (await res.json()) as ResumeExtractionResponse;
       if (!res.ok || !payload.ok || !payload.extracted) {
         setError(payload.error ?? "Failed to interpret resume");
+        setToast({ tone: "error", message: payload.error ?? "Failed to interpret resume." });
         return;
       }
 
@@ -428,8 +473,16 @@ export function ClientProfileForm() {
         setWarning(payload.warning ?? "Resume suggestions were imported, but upload history is not available yet.");
       }
       setSuccess(`Imported suggestions from ${extracted.file_name}. Review the fields, then save your profile.`);
+      setToast({
+        tone: "success",
+        message:
+          payload.persistence_available === false
+            ? `Imported ${extracted.file_name}. Suggestions are ready, but upload history will stay off until the migration is applied.`
+            : `Imported ${extracted.file_name} successfully. Your profile fields are ready to review.`,
+      });
     } catch {
       setError("Failed to interpret resume");
+      setToast({ tone: "error", message: "Failed to interpret resume. Try DOCX or a text export if the file keeps failing." });
     } finally {
       setUploadingResume(false);
     }
@@ -635,6 +688,22 @@ export function ClientProfileForm() {
         </button>
         </div>
       </form>
+      <div style={{ minHeight: toast ? 0 : 0, display: toast ? "block" : "none" }}>
+        {toast ? (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              ...toastBaseStyle,
+              background: toast.tone === "success" ? "#ecfdf5" : "#fef2f2",
+              borderColor: toast.tone === "success" ? "#86efac" : "#fca5a5",
+              color: toast.tone === "success" ? "#166534" : "#991b1b",
+            }}
+          >
+            {toast.message}
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }
