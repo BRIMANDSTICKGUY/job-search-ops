@@ -43,6 +43,51 @@ type ResumeExtractionResponse = {
     dealbreakers: string[];
     text_preview: string;
   };
+  resume_upload?: {
+    id: string;
+    file_name: string;
+    content_type: string | null;
+    file_size: number;
+    extracted_text: string;
+    extracted_profile: {
+      file_name: string;
+      primary_role: string;
+      secondary_role: string;
+      career_level: "" | CareerLevel;
+      core_skills: string[];
+      industry_keywords: string[];
+      preferred_locations: string[];
+      remote_preference: RemotePreference;
+      dealbreakers: string[];
+      text_preview: string;
+    };
+    created_at: string;
+  } | null;
+  error?: string;
+};
+
+type ResumeUploadResponse = {
+  ok: boolean;
+  resume_upload?: {
+    id: string;
+    file_name: string;
+    content_type: string | null;
+    file_size: number;
+    extracted_text: string;
+    extracted_profile: {
+      file_name: string;
+      primary_role: string;
+      secondary_role: string;
+      career_level: "" | CareerLevel;
+      core_skills: string[];
+      industry_keywords: string[];
+      preferred_locations: string[];
+      remote_preference: RemotePreference;
+      dealbreakers: string[];
+      text_preview: string;
+    };
+    created_at: string;
+  } | null;
   error?: string;
 };
 
@@ -97,6 +142,7 @@ export function ClientProfileForm() {
   const [success, setSuccess] = useState<string | null>(null);
   const [resumePreview, setResumePreview] = useState<string | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [latestResumeUpload, setLatestResumeUpload] = useState<ResumeUploadResponse["resume_upload"]>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_STATE);
 
   useEffect(() => {
@@ -153,6 +199,18 @@ export function ClientProfileForm() {
         } else {
           setHasProfile(false);
           setForm(DEFAULT_STATE);
+        }
+
+        const resumeRes = await fetch("/api/client/profile/resume", {
+          method: "GET",
+          headers: { authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+
+        const resumePayload = (await resumeRes.json()) as ResumeUploadResponse;
+        if (resumeRes.ok && resumePayload.ok) {
+          setLatestResumeUpload(resumePayload.resume_upload ?? null);
+          setResumePreview(resumePayload.resume_upload?.extracted_profile.text_preview ?? null);
         }
       } catch {
         if (!active) return;
@@ -286,6 +344,7 @@ export function ClientProfileForm() {
         dealbreakers: mergeCsvStrings(prev.dealbreakers, extracted.dealbreakers),
       }));
       setResumePreview(extracted.text_preview);
+      setLatestResumeUpload(payload.resume_upload ?? null);
       setSuccess(`Imported suggestions from ${extracted.file_name}. Review the fields, then save your profile.`);
     } catch {
       setError("Failed to interpret resume");
@@ -304,6 +363,11 @@ export function ClientProfileForm() {
       <p style={{ marginTop: 0, color: "#526071", lineHeight: 1.5 }}>
         Upload a resume to draft your role targets, then review the extracted fields before saving.
       </p>
+      {latestResumeUpload ? (
+        <p style={{ marginTop: 0, color: "#526071", fontSize: 13, lineHeight: 1.5 }}>
+          Latest import: {latestResumeUpload.file_name} on {new Date(latestResumeUpload.created_at).toLocaleString()}.
+        </p>
+      ) : null}
       {error ? <p style={{ color: "#b91c1c" }}>{error}</p> : null}
       {success ? <p style={{ color: "#15803d" }}>{success}</p> : null}
       <div

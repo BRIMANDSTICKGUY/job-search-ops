@@ -89,6 +89,11 @@ const baseRoutes = [
   { href: "/coach", label: "Coach" },
 ] as const;
 
+const signedInRoutes = [
+  { href: "/client", label: "Client" },
+  { href: "/client/profile", label: "Profile" },
+] as const;
+
 function clearAuthCookies() {
   document.cookie = "sb-access-token=; Path=/; Max-Age=0; SameSite=Lax";
   document.cookie = "sb-refresh-token=; Path=/; Max-Age=0; SameSite=Lax";
@@ -99,7 +104,7 @@ export function AppNavigation() {
   const router = useRouter();
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const routes = sessionEmail ? [...baseRoutes, { href: "/client", label: "Client" }] : baseRoutes;
+  const routes = sessionEmail ? [...baseRoutes, ...signedInRoutes] : baseRoutes;
 
   useEffect(() => {
     if (!hasSupabaseBrowserEnv()) return;

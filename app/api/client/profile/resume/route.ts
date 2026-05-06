@@ -3,9 +3,20 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
+  type ExtractedResumeProfile,
   extractProfileFromResumeText,
   extractTextFromResumeFile,
 } from "@/lib/resume/extractProfileFromResume";
+
+type StoredResumeUpload = {
+  id: string;
+  file_name: string;
+  content_type: string | null;
+  file_size: number;
+  extracted_text: string;
+  extracted_profile: ExtractedResumeProfile;
+  created_at: string;
+};
 
 function unauthorized() {
   return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
@@ -45,7 +56,34 @@ async function getAuthedUser(req: Request) {
     return { error: unauthorized() };
   }
 
-  return { user };
+  return { supabase, user };
+}
+
+export async function GET(req: Request) {
+  try {
+    const auth = await getAuthedUser(req);
+    if ("error" in auth) return auth.error;
+
+    const { data, error } = await auth.supabase
+      .from("client_resume_uploads")
+      .select("id, file_name, content_type, file_size, extracted_text, extracted_profile, created_at")
+      .eq("client_id", auth.user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      return serverError(error.message || "Failed to load resume upload");
+    }
+
+    return NextResponse.json({
+      ok: true,
+      resume_upload: (data as StoredResumeUpload | null) ?? null,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unexpected server error";
+    return serverError(message);
+  }
 }
 
 export async function POST(req: Request) {
@@ -75,7 +113,28 @@ export async function POST(req: Request) {
 
     const extracted = extractProfileFromResumeText(text, file.name);
 
-    return NextResponse.json({ ok: true, extracted });
+    const { data: storedUpload, error: insertError } = await auth.supabase
+      .from("client_resume_uploads")
+      .insert({
+        client_id: auth.user.id,
+        file_name: file.name,
+        content_type: file.type || null,
+        file_size: file.size,
+        extracted_text: text,
+        extracted_profile: extracted,
+      })
+      .select("id, file_name, content_type, file_size, extracted_text, extracted_profile, created_at")
+      .single();
+
+    if (insertError || !storedUpload) {
+      return serverError(insertError?.message || "Failed to store resume upload");
+    }
+
+    return NextResponse.json({
+      ok: true,
+      extracted,
+      resume_upload: storedUpload as StoredResumeUpload,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error";
     return serverError(message);
