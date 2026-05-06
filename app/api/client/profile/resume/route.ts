@@ -18,6 +18,15 @@ type StoredResumeUpload = {
   created_at: string;
 };
 
+type SupabaseLikeError = {
+  code?: string | null;
+  message?: string | null;
+};
+
+function isMissingResumeUploadsTable(error: SupabaseLikeError | null | undefined): boolean {
+  return error?.code === "42P01" || error?.message?.includes("client_resume_uploads") === true;
+}
+
 function unauthorized() {
   return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 }
@@ -72,6 +81,14 @@ export async function GET(req: Request) {
       .limit(1)
       .maybeSingle();
 
+    if (isMissingResumeUploadsTable(error)) {
+      return NextResponse.json({
+        ok: true,
+        resume_upload: null,
+        persistence_available: false,
+      });
+    }
+
     if (error) {
       return serverError(error.message || "Failed to load resume upload");
     }
@@ -79,6 +96,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       resume_upload: (data as StoredResumeUpload | null) ?? null,
+      persistence_available: true,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error";
@@ -126,6 +144,16 @@ export async function POST(req: Request) {
       .select("id, file_name, content_type, file_size, extracted_text, extracted_profile, created_at")
       .single();
 
+    if (isMissingResumeUploadsTable(insertError)) {
+      return NextResponse.json({
+        ok: true,
+        extracted,
+        resume_upload: null,
+        persistence_available: false,
+        warning: "Resume suggestions were extracted, but upload history is not available until the database migration is applied.",
+      });
+    }
+
     if (insertError || !storedUpload) {
       return serverError(insertError?.message || "Failed to store resume upload");
     }
@@ -134,6 +162,7 @@ export async function POST(req: Request) {
       ok: true,
       extracted,
       resume_upload: storedUpload as StoredResumeUpload,
+      persistence_available: true,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected server error";

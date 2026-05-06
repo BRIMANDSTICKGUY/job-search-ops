@@ -63,6 +63,8 @@ type ResumeExtractionResponse = {
     };
     created_at: string;
   } | null;
+  persistence_available?: boolean;
+  warning?: string;
   error?: string;
 };
 
@@ -88,6 +90,7 @@ type ResumeUploadResponse = {
     };
     created_at: string;
   } | null;
+  persistence_available?: boolean;
   error?: string;
 };
 
@@ -139,6 +142,7 @@ export function ClientProfileForm() {
   const [uploadingResume, setUploadingResume] = useState(false);
   const [hasProfile, setHasProfile] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [resumePreview, setResumePreview] = useState<string | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
@@ -151,6 +155,7 @@ export function ClientProfileForm() {
     async function loadProfile() {
       setLoading(true);
       setError(null);
+      setWarning(null);
 
       try {
         const {
@@ -211,6 +216,9 @@ export function ClientProfileForm() {
         if (resumeRes.ok && resumePayload.ok) {
           setLatestResumeUpload(resumePayload.resume_upload ?? null);
           setResumePreview(resumePayload.resume_upload?.extracted_profile.text_preview ?? null);
+          if (resumePayload.persistence_available === false) {
+            setWarning("Resume upload history will appear after the database migration is applied. You can still import suggestions into the form now.");
+          }
         }
       } catch {
         if (!active) return;
@@ -299,6 +307,7 @@ export function ClientProfileForm() {
 
     setUploadingResume(true);
     setError(null);
+    setWarning(null);
     setSuccess(null);
 
     try {
@@ -345,6 +354,9 @@ export function ClientProfileForm() {
       }));
       setResumePreview(extracted.text_preview);
       setLatestResumeUpload(payload.resume_upload ?? null);
+      if (payload.persistence_available === false) {
+        setWarning(payload.warning ?? "Resume suggestions were imported, but upload history is not available yet.");
+      }
       setSuccess(`Imported suggestions from ${extracted.file_name}. Review the fields, then save your profile.`);
     } catch {
       setError("Failed to interpret resume");
@@ -369,6 +381,7 @@ export function ClientProfileForm() {
         </p>
       ) : null}
       {error ? <p style={{ color: "#b91c1c" }}>{error}</p> : null}
+      {warning ? <p style={{ color: "#92400e" }}>{warning}</p> : null}
       {success ? <p style={{ color: "#15803d" }}>{success}</p> : null}
       <div
         style={{
