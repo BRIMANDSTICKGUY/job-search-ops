@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ClientJobsTable } from "@/components/ClientJobsTable";
+import { ClientProfileForm } from "@/components/ClientProfileForm";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
 type ClientJob = {
@@ -107,6 +108,19 @@ export default function ClientDashboard() {
           <p style={{ margin: 0, color: "#526071", fontSize: 15, lineHeight: 1.6 }}>
             This dashboard only shows roles assigned to you. Open the real application link, update your status, and stay focused on the jobs already curated for your search.
           </p>
+        </section>
+
+        <section
+          style={{
+            background: "#ffffff",
+            border: "1px solid #dbe4f0",
+            borderRadius: 20,
+            boxShadow: "0 16px 40px rgba(15, 23, 42, 0.05)",
+            padding: 24,
+            marginBottom: 20,
+          }}
+        >
+          <ClientProfileForm />
         </section>
 
         <ClientJobsTable jobs={jobs} />

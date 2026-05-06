@@ -29,6 +29,23 @@ type ProfileResponse = {
   error?: string;
 };
 
+type ResumeExtractionResponse = {
+  ok: boolean;
+  extracted?: {
+    file_name: string;
+    primary_role: string;
+    secondary_role: string;
+    career_level: "" | CareerLevel;
+    core_skills: string[];
+    industry_keywords: string[];
+    preferred_locations: string[];
+    remote_preference: RemotePreference;
+    dealbreakers: string[];
+    text_preview: string;
+  };
+  error?: string;
+};
+
 type FormState = {
   primary_role: string;
   secondary_role: string;
@@ -66,12 +83,20 @@ function splitCsv(value: string): string[] {
     .filter((item) => item.length > 0);
 }
 
+function mergeCsvStrings(existing: string, incoming: string[]): string {
+  const merged = Array.from(new Set([...splitCsv(existing), ...incoming]));
+  return merged.join(", ");
+}
+
 export function ClientProfileForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingResume, setUploadingResume] = useState(false);
   const [hasProfile, setHasProfile] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [resumePreview, setResumePreview] = useState<string | null>(null);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_STATE);
 
   useEffect(() => {
@@ -208,6 +233,67 @@ export function ClientProfileForm() {
     }
   }
 
+  async function onUploadResume() {
+    if (!resumeFile) {
+      setError("Choose a resume file to import");
+      return;
+    }
+
+    setUploadingResume(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const {
+        data: { session },
+      } = await getSupabaseBrowser().auth.getSession();
+
+      const token = session?.access_token;
+      if (!token) {
+        setError("Unauthorized");
+        setUploadingResume(false);
+        return;
+      }
+
+      const body = new FormData();
+      body.append("resume", resumeFile);
+
+      const res = await fetch("/api/client/profile/resume", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+        },
+        body,
+      });
+
+      const payload = (await res.json()) as ResumeExtractionResponse;
+      if (!res.ok || !payload.ok || !payload.extracted) {
+        setError(payload.error ?? "Failed to interpret resume");
+        return;
+      }
+
+      const extracted = payload.extracted;
+      setForm((prev) => ({
+        primary_role: extracted.primary_role || prev.primary_role,
+        secondary_role: extracted.secondary_role || prev.secondary_role,
+        career_level: extracted.career_level || prev.career_level,
+        core_skills: mergeCsvStrings(prev.core_skills, extracted.core_skills),
+        industry_keywords: mergeCsvStrings(prev.industry_keywords, extracted.industry_keywords),
+        preferred_locations: mergeCsvStrings(prev.preferred_locations, extracted.preferred_locations),
+        remote_preference: extracted.remote_preference || prev.remote_preference,
+        salary_min: prev.salary_min,
+        salary_max: prev.salary_max,
+        dealbreakers: mergeCsvStrings(prev.dealbreakers, extracted.dealbreakers),
+      }));
+      setResumePreview(extracted.text_preview);
+      setSuccess(`Imported suggestions from ${extracted.file_name}. Review the fields, then save your profile.`);
+    } catch {
+      setError("Failed to interpret resume");
+    } finally {
+      setUploadingResume(false);
+    }
+  }
+
   if (loading) {
     return <p>Loading profile...</p>;
   }
@@ -215,8 +301,42 @@ export function ClientProfileForm() {
   return (
     <section style={{ marginBottom: 24 }}>
       <h2>Profile</h2>
+      <p style={{ marginTop: 0, color: "#526071", lineHeight: 1.5 }}>
+        Upload a resume to draft your role targets, then review the extracted fields before saving.
+      </p>
       {error ? <p style={{ color: "#b91c1c" }}>{error}</p> : null}
       {success ? <p style={{ color: "#15803d" }}>{success}</p> : null}
+      <div
+        style={{
+          display: "grid",
+          gap: 8,
+          maxWidth: 640,
+          marginBottom: 16,
+          padding: 14,
+          border: "1px solid #dbe4f0",
+          borderRadius: 12,
+          background: "#f8fbff",
+        }}
+      >
+        <input
+          type="file"
+          accept=".pdf,.docx,.txt,.md,.rtf"
+          onChange={(event) => setResumeFile(event.target.files?.[0] ?? null)}
+        />
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <button type="button" onClick={onUploadResume} disabled={uploadingResume || loading}>
+            {uploadingResume ? "Reading Resume..." : "Import Resume"}
+          </button>
+          <span style={{ color: "#64748b", fontSize: 13 }}>
+            Supports PDF, DOCX, TXT, MD, and RTF up to 5MB.
+          </span>
+        </div>
+        {resumePreview ? (
+          <p style={{ margin: 0, color: "#526071", fontSize: 13, lineHeight: 1.5 }}>
+            Preview: {resumePreview}
+          </p>
+        ) : null}
+      </div>
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 8, maxWidth: 640 }}>
         <input
           type="text"
