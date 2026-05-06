@@ -185,6 +185,21 @@ const badgeStyle: React.CSSProperties = {
   fontWeight: 700,
 };
 
+const laneCountBadgeStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minWidth: 24,
+  height: 24,
+  padding: "0 8px",
+  borderRadius: 999,
+  background: "rgba(15, 23, 42, 0.06)",
+  color: "#475569",
+  fontSize: 12,
+  fontWeight: 800,
+  lineHeight: 1,
+};
+
 function now() {
   return Date.now();
 }
@@ -965,13 +980,23 @@ export default function Page() {
                   onClick={() => setActiveUpperLane(lane)}
                   style={{
                     ...secondaryButtonStyle,
+                    gap: 8,
                     borderRadius: 999,
                     background: active ? "#ffffff" : "transparent",
                     boxShadow: active ? "0 8px 18px rgba(15, 23, 42, 0.08)" : "none",
                     fontWeight: active ? 800 : 600,
                   }}
                 >
-                  {lane} <span style={{ opacity: 0.7 }}>{counts[lane]}</span>
+                  <span>{lane}</span>
+                  <span
+                    style={{
+                      ...laneCountBadgeStyle,
+                      background: active ? "#e2e8f0" : "rgba(15, 23, 42, 0.06)",
+                      color: active ? "#0f172a" : "#475569",
+                    }}
+                  >
+                    {counts[lane]}
+                  </span>
                 </button>
               );
             })}
