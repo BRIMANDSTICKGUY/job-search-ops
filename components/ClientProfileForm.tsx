@@ -160,9 +160,13 @@ const labelStyle: React.CSSProperties = {
 };
 
 const fieldStyle: React.CSSProperties = {
+  display: "block",
   width: "100%",
+  maxWidth: "100%",
+  minWidth: 0,
   minHeight: 46,
   padding: "12px 14px",
+  boxSizing: "border-box",
   borderRadius: 14,
   border: "1px solid #cbd5e1",
   background: "#ffffff",
