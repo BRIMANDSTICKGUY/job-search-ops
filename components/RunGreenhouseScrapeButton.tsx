@@ -22,14 +22,12 @@ export function RunGreenhouseScrapeButton() {
     setMessage("");
 
     try {
-      const res = await fetch("/api/scrape/run", {
+      const res = await fetch("/api/coach/ingest/run", {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-admin-token": process.env.NEXT_PUBLIC_SCRAPE_ADMIN_TOKEN ?? "",
         },
         body: JSON.stringify({
-          source: "greenhouse",
           mode: "stub",
           source_detail: "coach_manual_trigger",
         }),
@@ -55,14 +53,12 @@ export function RunGreenhouseScrapeButton() {
     setMessage("");
 
     try {
-      const res = await fetch("/api/ingest/web", {
+      const res = await fetch("/api/coach/ingest/run", {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-admin-token": process.env.NEXT_PUBLIC_SCRAPE_ADMIN_TOKEN ?? "",
         },
         body: JSON.stringify({
-          source: "all_active_sources",
           mode: "live",
           source_detail: "coach_manual_trigger",
         }),
