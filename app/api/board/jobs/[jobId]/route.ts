@@ -10,6 +10,8 @@ type RouteContext = {
 type PatchBody = {
   lane?: unknown;
   outcome_status?: unknown;
+  client_notes?: unknown;
+  internal_notes?: unknown;
 };
 
 const VALID_LANES = new Set(["INBOX", "VERIFIED", "CLIENT-SENT", "WATCHLIST", "REJECTED"]);
@@ -108,6 +110,22 @@ export async function PATCH(req: Request, context: RouteContext) {
       } else {
         return badRequest("Invalid outcome status");
       }
+    }
+
+    if (body.client_notes !== undefined) {
+      if (typeof body.client_notes !== "string") {
+        return badRequest("client_notes must be a string");
+      }
+
+      patch.client_notes = body.client_notes.trim();
+    }
+
+    if (body.internal_notes !== undefined) {
+      if (typeof body.internal_notes !== "string") {
+        return badRequest("internal_notes must be a string");
+      }
+
+      patch.internal_notes = body.internal_notes.trim();
     }
 
     if (Object.keys(patch).length === 0) {

@@ -10,6 +10,8 @@ type JobRow = {
   link: string | null;
   location: string | null;
   lane: string | null;
+  client_notes: string | null;
+  internal_notes: string | null;
   outcome_status: "interview" | "no_response" | "rejected" | "offer" | null;
   last_response_at: string | null;
   created_at: string | null;
@@ -77,7 +79,7 @@ export async function GET(req: Request) {
     const [jobsResult, clientsResult, assignmentsResult] = await Promise.all([
       auth.supabase
         .from("jobs")
-        .select("id, title, company, link, location, lane, outcome_status, last_response_at, created_at, updated_at")
+        .select("id, title, company, link, location, lane, client_notes, internal_notes, outcome_status, last_response_at, created_at, updated_at")
         .eq("is_test", false)
         .order("created_at", { ascending: false })
         .limit(500),
@@ -155,8 +157,8 @@ export async function GET(req: Request) {
         salary: "",
         lane: job.lane ?? "INBOX",
         assignedClientIds: Array.from(assignedClientIdsByJobId.get(job.id) ?? []),
-        clientNotes: "",
-        internalNotes: "",
+        clientNotes: job.client_notes ?? "",
+        internalNotes: job.internal_notes ?? "",
         createdAt: job.created_at ? new Date(job.created_at).getTime() : Date.now(),
         movedAt: job.updated_at ? new Date(job.updated_at).getTime() : job.created_at ? new Date(job.created_at).getTime() : Date.now(),
         outcome_status: job.outcome_status,

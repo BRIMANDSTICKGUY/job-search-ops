@@ -411,7 +411,12 @@ export default function Page() {
     setLiveBoardError(null);
   }
 
-  async function patchLiveJob(jobId: string, payload: { lane?: UpperLaneId; outcome_status?: Job["outcome_status"] }) {
+  async function patchLiveJob(jobId: string, payload: {
+    lane?: UpperLaneId;
+    outcome_status?: Job["outcome_status"];
+    client_notes?: string;
+    internal_notes?: string;
+  }) {
     const {
       data: { session },
     } = await getSupabaseBrowser().auth.getSession();
@@ -829,6 +834,20 @@ export default function Page() {
 
   function setNotes(jobId: string, field: "clientNotes" | "internalNotes", value: string) {
     if (boardSource === "live") {
+      void (async () => {
+        try {
+          await patchLiveJob(jobId, {
+            [field === "clientNotes" ? "client_notes" : "internal_notes"]: value,
+          });
+          setState((s) => ({
+            ...s,
+            jobs: s.jobs.map((j) => (j.id === jobId ? { ...j, [field]: value } : j)),
+          }));
+          setLiveBoardError(null);
+        } catch (error) {
+          setLiveBoardError(error instanceof Error ? error.message : "Failed to save notes");
+        }
+      })();
       return;
     }
 
@@ -1588,22 +1607,18 @@ function JobCard(props: {
           </div>
         )}
 
-        {notesMode === "local" ? (
-          <div style={{ marginTop: 10, minWidth: 0 }}>
-            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Client Notes (client-safe)</div>
-            <textarea
-              value={job.clientNotes}
-              onChange={(e) => props.onChangeClientNotes(e.target.value)}
-              rows={2}
-              style={{ display: "block", width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: 8, resize: "vertical" }}
-              readOnly={mode === "client"}
-            />
+        <div style={{ marginTop: 10, minWidth: 0 }}>
+          <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>
+            Client Notes (client-safe){notesMode === "context" ? " · saved live" : ""}
           </div>
-        ) : (
-          <div style={{ marginTop: 10, color: "#526071", fontSize: 13, lineHeight: 1.5 }}>
-            Persistent notes live in the Job Context panel below. Select this job to read or add saved coach and client notes.
-          </div>
-        )}
+          <textarea
+            value={job.clientNotes}
+            onChange={(e) => props.onChangeClientNotes(e.target.value)}
+            rows={2}
+            style={{ display: "block", width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: 8, resize: "vertical" }}
+            readOnly={mode === "client"}
+          />
+        </div>
 
         {mode === "coach" && (
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
@@ -1635,9 +1650,11 @@ function JobCard(props: {
           </div>
         )}
 
-        {mode === "coach" && notesMode === "local" && (
+        {mode === "coach" && (
           <div style={{ marginTop: 10, minWidth: 0 }}>
-            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Internal Notes (coach-only)</div>
+            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>
+              Internal Notes (coach-only){notesMode === "context" ? " · saved live" : ""}
+            </div>
             <textarea
               value={job.internalNotes}
               onChange={(e) => props.onChangeInternalNotes(e.target.value)}
