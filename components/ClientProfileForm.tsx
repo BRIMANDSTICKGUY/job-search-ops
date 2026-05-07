@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 import { JOB_ROLE_GROUPS, isKnownJobRole } from "@/lib/profile/jobRoleCatalog";
 
@@ -94,6 +94,8 @@ type ResumeUploadResponse = {
   persistence_available?: boolean;
   error?: string;
 };
+
+type ExtractedResumeProfile = NonNullable<ResumeExtractionResponse["extracted"]>;
 
 type FormState = {
   primary_role: string;
@@ -222,6 +224,7 @@ function renderRoleOptions() {
 }
 
 export function ClientProfileForm() {
+  const roleTargetsRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingResume, setUploadingResume] = useState(false);
@@ -232,6 +235,7 @@ export function ClientProfileForm() {
   const [resumePreview, setResumePreview] = useState<string | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [latestResumeUpload, setLatestResumeUpload] = useState<ResumeUploadResponse["resume_upload"]>(null);
+  const [importedProfile, setImportedProfile] = useState<ExtractedResumeProfile | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [form, setForm] = useState<FormState>(DEFAULT_STATE);
 
@@ -315,17 +319,20 @@ export function ClientProfileForm() {
           if (resumeRes.ok && resumePayload.ok) {
             setLatestResumeUpload(resumePayload.resume_upload ?? null);
             setResumePreview(resumePayload.resume_upload?.extracted_profile.text_preview ?? null);
+            setImportedProfile(resumePayload.resume_upload?.extracted_profile ?? null);
             if (resumePayload.persistence_available === false) {
               setWarning("Resume upload history will appear after the database migration is applied. You can still import suggestions into the form now.");
             }
           } else {
             setLatestResumeUpload(null);
             setResumePreview(null);
+            setImportedProfile(null);
           }
         } catch {
           if (!active) return;
           setLatestResumeUpload(null);
           setResumePreview(null);
+          setImportedProfile(null);
           setWarning((currentWarning) =>
             currentWarning ?? "Your profile loaded, but resume history is temporarily unavailable."
           );
@@ -484,6 +491,7 @@ export function ClientProfileForm() {
       }));
       setResumePreview(extracted.text_preview);
       setLatestResumeUpload(payload.resume_upload ?? null);
+      setImportedProfile(extracted);
       if (payload.persistence_available === false) {
         setWarning(payload.warning ?? "Resume suggestions were imported, but upload history is not available yet.");
       }
@@ -495,6 +503,7 @@ export function ClientProfileForm() {
             ? `Imported ${extracted.file_name}. Suggestions are ready, but upload history will stay off until the migration is applied.`
             : `Imported ${extracted.file_name} successfully. Your profile fields are ready to review.`,
       });
+          roleTargetsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch {
       setError("Failed to interpret resume");
       setToast({ tone: "error", message: "Failed to interpret resume. Try DOCX or a text export if the file keeps failing." });
@@ -553,8 +562,60 @@ export function ClientProfileForm() {
           </p>
         ) : null}
       </div>
+      {importedProfile ? (
+        <div
+          style={{
+            ...sectionStyle,
+            borderColor: "#bfdbfe",
+            background: "linear-gradient(180deg, #f8fbff 0%, #eef6ff 100%)",
+          }}
+        >
+          <div style={{ display: "grid", gap: 6 }}>
+            <p style={{ margin: 0, color: "#1d4ed8", fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Imported Suggestions
+            </p>
+            <h3 style={{ margin: 0, fontSize: 20, letterSpacing: "-0.03em" }}>Review what was pulled from your resume</h3>
+            <p style={{ ...helperStyle, fontSize: 13 }}>
+              These values were added into the profile form below. Check them, adjust anything that looks off, then save your profile.
+            </p>
+          </div>
+          <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+            <div style={{ display: "grid", gap: 6 }}>
+              <strong style={{ fontSize: 13, color: "#334155" }}>Primary role</strong>
+              <span style={{ color: "#0f172a", fontSize: 14 }}>{importedProfile.primary_role || "Not detected"}</span>
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              <strong style={{ fontSize: 13, color: "#334155" }}>Secondary role</strong>
+              <span style={{ color: "#0f172a", fontSize: 14 }}>{importedProfile.secondary_role || "Not detected"}</span>
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              <strong style={{ fontSize: 13, color: "#334155" }}>Career level</strong>
+              <span style={{ color: "#0f172a", fontSize: 14 }}>{importedProfile.career_level || "Not detected"}</span>
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              <strong style={{ fontSize: 13, color: "#334155" }}>Remote preference</strong>
+              <span style={{ color: "#0f172a", fontSize: 14 }}>{importedProfile.remote_preference}</span>
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 12 }}>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#334155" }}>Detected search terms</p>
+            <p style={{ margin: 0, color: "#526071", fontSize: 14, lineHeight: 1.6 }}>
+              <strong>Skills:</strong> {importedProfile.core_skills.length ? importedProfile.core_skills.join(", ") : "None detected"}
+            </p>
+            <p style={{ margin: 0, color: "#526071", fontSize: 14, lineHeight: 1.6 }}>
+              <strong>Industries:</strong> {importedProfile.industry_keywords.length ? importedProfile.industry_keywords.join(", ") : "None detected"}
+            </p>
+            <p style={{ margin: 0, color: "#526071", fontSize: 14, lineHeight: 1.6 }}>
+              <strong>Locations:</strong> {importedProfile.preferred_locations.length ? importedProfile.preferred_locations.join(", ") : "None detected"}
+            </p>
+            <p style={{ margin: 0, color: "#526071", fontSize: 14, lineHeight: 1.6 }}>
+              <strong>Dealbreakers:</strong> {importedProfile.dealbreakers.length ? importedProfile.dealbreakers.join(", ") : "None detected"}
+            </p>
+          </div>
+        </div>
+      ) : null}
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 18 }}>
-        <div style={sectionStyle}>
+        <div ref={roleTargetsRef} style={sectionStyle}>
           <div style={{ display: "grid", gap: 6 }}>
             <p style={{ margin: 0, color: "#64748b", fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
               Role Targets
