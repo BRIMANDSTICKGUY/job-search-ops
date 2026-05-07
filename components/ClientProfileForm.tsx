@@ -144,6 +144,15 @@ function mergeCsvStrings(existing: string, incoming: string[]): string {
   return merged.join(", ");
 }
 
+function hasDetectedTerms(profile: ExtractedResumeProfile): boolean {
+  return (
+    profile.core_skills.length > 0 ||
+    profile.industry_keywords.length > 0 ||
+    profile.preferred_locations.length > 0 ||
+    profile.dealbreakers.length > 0
+  );
+}
+
 const sectionStyle: React.CSSProperties = {
   display: "grid",
   gap: 16,
@@ -626,18 +635,31 @@ export function ClientProfileForm() {
           </div>
           <div style={{ display: "grid", gap: 12 }}>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#334155" }}>Detected search terms</p>
-            <p style={{ margin: 0, color: "#526071", fontSize: 14, lineHeight: 1.6 }}>
-              <strong>Skills:</strong> {importedProfile.core_skills.length ? importedProfile.core_skills.join(", ") : "None detected"}
-            </p>
-            <p style={{ margin: 0, color: "#526071", fontSize: 14, lineHeight: 1.6 }}>
-              <strong>Industries:</strong> {importedProfile.industry_keywords.length ? importedProfile.industry_keywords.join(", ") : "None detected"}
-            </p>
-            <p style={{ margin: 0, color: "#526071", fontSize: 14, lineHeight: 1.6 }}>
-              <strong>Locations:</strong> {importedProfile.preferred_locations.length ? importedProfile.preferred_locations.join(", ") : "None detected"}
-            </p>
-            <p style={{ margin: 0, color: "#526071", fontSize: 14, lineHeight: 1.6 }}>
-              <strong>Dealbreakers:</strong> {importedProfile.dealbreakers.length ? importedProfile.dealbreakers.join(", ") : "None detected"}
-            </p>
+            {importedProfile.core_skills.length ? (
+              <p style={{ margin: 0, color: "#526071", fontSize: 14, lineHeight: 1.6 }}>
+                <strong>Skills:</strong> {importedProfile.core_skills.join(", ")}
+              </p>
+            ) : null}
+            {importedProfile.industry_keywords.length ? (
+              <p style={{ margin: 0, color: "#526071", fontSize: 14, lineHeight: 1.6 }}>
+                <strong>Industries:</strong> {importedProfile.industry_keywords.join(", ")}
+              </p>
+            ) : null}
+            {importedProfile.preferred_locations.length ? (
+              <p style={{ margin: 0, color: "#526071", fontSize: 14, lineHeight: 1.6 }}>
+                <strong>Locations:</strong> {importedProfile.preferred_locations.join(", ")}
+              </p>
+            ) : null}
+            {importedProfile.dealbreakers.length ? (
+              <p style={{ margin: 0, color: "#526071", fontSize: 14, lineHeight: 1.6 }}>
+                <strong>Dealbreakers:</strong> {importedProfile.dealbreakers.join(", ")}
+              </p>
+            ) : null}
+            {!hasDetectedTerms(importedProfile) ? (
+              <p style={{ margin: 0, color: "#64748b", fontSize: 13, lineHeight: 1.6 }}>
+                No extra search terms were confidently detected. You can add locations, industries, skills, or dealbreakers manually below.
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}
