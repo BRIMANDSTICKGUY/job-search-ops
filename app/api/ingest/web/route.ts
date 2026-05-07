@@ -284,59 +284,33 @@ async function fetchJobsForSource(
   }
 }
 
-async function fetchExistingJobsByLink(
+async function fetchExistingJobsForSource(
   supabase: ReturnType<typeof createClient>,
-  links: string[]
-): Promise<Map<string, ExistingJobRow>> {
-  if (links.length === 0) return new Map();
-  const { data, error } = await (supabase as any)
-    .from("jobs")
-    .select("id, link")
-    .in("link", links);
-  if (error || !data) return new Map();
-
-  const rows = (data as ExistingJobRow[]).filter((row) => typeof row.link === "string" && row.link.trim().length > 0);
-  return new Map(rows.map((row) => [String(row.link).trim(), row]));
-}
-
-async function reconcileSourceJobs(
-  supabase: ReturnType<typeof createClient>,
-  sourceId: string,
-  liveLinks: string[],
-  seenAtIso: string
-): Promise<number> {
+  sourceId: string
+): Promise<ExistingJobRow[]> {
   const { data, error } = await (supabase as any)
     .from("jobs")
     .select("id, link")
     .eq("ingest_source", sourceId)
     .eq("is_test", false);
+  if (error || !data) return [];
 
-  if (error || !data) {
-    console.error("[INGEST][reconcile][ERROR]", { sourceId, error });
-    return 0;
-  }
+  return (data as ExistingJobRow[]).filter(
+    (row) => typeof row.link === "string" && row.link.trim().length > 0
+  );
+}
 
+async function reconcileSourceJobs(
+  existingJobs: ExistingJobRow[],
+  liveLinks: string[],
+): Promise<number> {
   const liveLinkSet = new Set(liveLinks.filter((link) => link.length > 0));
-  const staleIds = (data as ExistingJobRow[])
+  const staleIds = existingJobs
     .filter((row) => {
       const link = (row.link ?? "").trim();
       return link.length > 0 && !liveLinkSet.has(link);
     })
     .map((row) => row.id);
-
-  if (staleIds.length === 0) {
-    return 0;
-  }
-
-  const { error: updateError } = await (supabase as any)
-    .from("jobs")
-    .update({ source_active: false })
-    .in("id", staleIds);
-
-  if (updateError) {
-    console.error("[INGEST][reconcile][UPDATE_ERROR]", { sourceId, updateError, staleIds: staleIds.length, seenAtIso });
-    return 0;
-  }
 
   return staleIds.length;
 }
@@ -429,7 +403,10 @@ export async function POST(req: Request) {
         sourceSummary.fetched = normalized.length;
         fetchedCount += normalized.length;
         const links = normalized.map((j) => j.link).filter(Boolean) as string[];
-        const existingByLink = await fetchExistingJobsByLink(supabase, links);
+        const existingJobs = await fetchExistingJobsForSource(supabase, source.id);
+        const existingByLink = new Map(
+          existingJobs.map((row) => [String(row.link).trim(), row])
+        );
 
         for (const job of normalized) {
           const existing = job.link ? existingByLink.get(job.link) : null;
@@ -557,12 +534,31 @@ export async function POST(req: Request) {
           sourceSummary.inserted += 1;
         }
 
-        sourceSummary.archived = await reconcileSourceJobs(
-          supabase,
-          source.id,
-          links,
-          seenAtIso
-        );
+        const staleIds = existingJobs
+          .filter((row) => {
+            const link = (row.link ?? "").trim();
+            return link.length > 0 && !new Set(links).has(link);
+          })
+          .map((row) => row.id);
+
+        sourceSummary.archived = await reconcileSourceJobs(existingJobs, links);
+
+        if (staleIds.length > 0) {
+          const { error: updateError } = await (supabase as any)
+            .from("jobs")
+            .update({ source_active: false })
+            .in("id", staleIds);
+
+          if (updateError) {
+            console.error("[INGEST][reconcile][UPDATE_ERROR]", {
+              sourceId: source.id,
+              updateError,
+              staleIds: staleIds.length,
+              seenAtIso,
+            });
+            sourceSummary.archived = 0;
+          }
+        }
 
         sourceSummaries.push(sourceSummary);
       } catch (e: any) {
