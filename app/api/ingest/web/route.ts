@@ -610,6 +610,9 @@ export async function POST(req: Request) {
 
           if (jobErr || !jobRow) continue;
 
+          insertedCount += 1;
+          sourceSummary.inserted += 1;
+
           try {
             for (const profile of profiles ?? []) {
               const result = evaluateJobForClient(
@@ -680,9 +683,10 @@ export async function POST(req: Request) {
               raw_payload: job.raw_payload ?? null,
             });
 
-          if (eventErr) continue;
-          insertedCount += 1;
-          sourceSummary.inserted += 1;
+          if (eventErr) {
+            console.error("[INGEST][event_insert][ERROR]", eventErr);
+            continue;
+          }
         }
 
         const staleIds = existingJobs
