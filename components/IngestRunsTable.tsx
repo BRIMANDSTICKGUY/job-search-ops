@@ -70,6 +70,7 @@ type IngestRun = {
   finished_at: string | null;
   job_count: number;
   error_message: string | null;
+  run_count: number;
 };
 
 type RunsResponse = {
@@ -87,7 +88,20 @@ type RetryResponse = {
   duplicates?: number;
 };
 
+type DeleteResponse = {
+  ok: boolean;
+  error?: string;
+  deleted_count?: number;
+  source?: string;
+  day?: string;
+};
+
 type RetryIngestRunButtonProps = {
+  runId: string;
+  onDone?: () => Promise<void> | void;
+};
+
+type DeleteIngestRunButtonProps = {
   runId: string;
   onDone?: () => Promise<void> | void;
 };
@@ -186,6 +200,52 @@ export function RetryIngestRunButton({ runId, onDone }: RetryIngestRunButtonProp
   );
 }
 
+export function DeleteIngestRunButton({ runId, onDone }: DeleteIngestRunButtonProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onDelete() {
+    const confirmed = window.confirm("Delete this source/day ingest history from the runs list?");
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+    setMessage(null);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/ingest/runs/${encodeURIComponent(runId)}`, {
+        method: "DELETE",
+      });
+      const payload = (await res.json()) as DeleteResponse;
+
+      if (!res.ok || !payload.ok) {
+        setError(payload.error ?? "Delete failed");
+        return;
+      }
+
+      setMessage(`Deleted ${payload.deleted_count ?? 0} run record(s).`);
+      if (onDone) {
+        await onDone();
+      }
+    } catch {
+      setError("Delete failed");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  return (
+    <div>
+      <button type="button" onClick={onDelete} disabled={isDeleting} style={actionButtonStyle}>
+        {isDeleting ? "Deleting..." : "Delete Day"}
+      </button>
+      {message ? <div style={{ fontSize: 12, color: "#15803d" }}>{message}</div> : null}
+      {error ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{error}</div> : null}
+    </div>
+  );
+}
+
 export function IngestRunsTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -237,6 +297,7 @@ export function IngestRunsTable() {
               <tr>
                 <th style={headerCellStyle}>Source</th>
                 <th style={headerCellStyle}>Status</th>
+                <th style={headerCellStyle}>Runs</th>
                 <th style={headerCellStyle}>Started At</th>
                 <th style={headerCellStyle}>Finished At</th>
                 <th style={headerCellStyle}>Job Count</th>
@@ -247,7 +308,7 @@ export function IngestRunsTable() {
             <tbody>
               {runs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={mutedCellStyle}>No ingest runs found.</td>
+                  <td colSpan={8} style={mutedCellStyle}>No ingest runs found.</td>
                 </tr>
               ) : (
                 runs.map((run) => {
@@ -280,16 +341,19 @@ export function IngestRunsTable() {
                           {run.status}
                         </span>
                       </td>
+                      <td style={bodyCellStyle}>{run.run_count}</td>
                       <td style={bodyCellStyle}>{formatTimestamp(run.started_at)}</td>
                       <td style={mutedCellStyle}>{formatTimestamp(run.finished_at)}</td>
                       <td style={bodyCellStyle}>{run.job_count}</td>
                       <td style={{ ...mutedCellStyle, maxWidth: 300 }}>{formatErrorMessage(run.error_message)}</td>
                       <td style={bodyCellStyle}>
-                        {run.status === "failed" ? (
-                          <RetryIngestRunButton runId={run.id} onDone={loadRuns} />
-                        ) : (
-                          "—"
-                        )}
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+                          {run.status === "failed" ? (
+                            <RetryIngestRunButton runId={run.id} onDone={loadRuns} />
+                          ) : null}
+                          <DeleteIngestRunButton runId={run.id} onDone={loadRuns} />
+                          {run.status !== "failed" ? <span>—</span> : null}
+                        </div>
                       </td>
                     </tr>
                   );

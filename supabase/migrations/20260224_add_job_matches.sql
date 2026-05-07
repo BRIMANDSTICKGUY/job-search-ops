@@ -9,7 +9,7 @@ create table if not exists job_matches (
   created_at timestamptz not null default now(),
   constraint job_matches_client_id_fkey
     foreign key (client_id)
-    references users(id)
+    references auth.users(id)
     on delete cascade
 );
 

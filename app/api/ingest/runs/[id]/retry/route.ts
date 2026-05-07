@@ -125,8 +125,9 @@ export async function POST(_req: Request, context: RouteContext) {
           supabase,
         });
       }
+      const message = serializeIngestError(error);
       return NextResponse.json(
-        { ok: false, error: "Unexpected server error" },
+        { ok: false, error: message },
         { status: 500 }
       );
     }

@@ -643,16 +643,19 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
                   </div>
                   <span
                     style={{
-                      display: "inline-block",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minHeight: 24,
                       fontSize: 11,
                       letterSpacing: 0.6,
                       textTransform: "uppercase",
                       padding: "2px 8px",
+                      lineHeight: 1,
                       borderRadius: 999,
                       border: "1px solid #d1d5db",
                       background: "#f9fafb",
                       color: "#4b5563",
-                      verticalAlign: "middle",
                     }}
                   >
                     Intake
