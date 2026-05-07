@@ -9,6 +9,17 @@ type ScrapeResponse = {
   inserted?: number;
   fetched?: number;
   duplicates?: number;
+  source_summaries?: Array<{
+    source_id?: string;
+    source_type?: string;
+    company_name?: string | null;
+    client_id?: string | null;
+    fetched?: number;
+    inserted?: number;
+    duplicates?: number;
+    archived?: number;
+    skipped_no_profiles?: boolean;
+  }>;
   errors?: Array<{ source_id?: string; message?: string }>;
   fetch_errors?: Array<{ source_type?: string; source_url?: string | null; message?: string }>;
   error?: string;
@@ -18,10 +29,12 @@ export function RunGreenhouseScrapeButton() {
   const [stubLoading, setStubLoading] = useState(false);
   const [liveLoading, setLiveLoading] = useState(false);
   const [message, setMessage] = useState<string>("");
+  const [sourceSummaries, setSourceSummaries] = useState<NonNullable<ScrapeResponse["source_summaries"]>>([]);
 
   async function runGreenhouseStub() {
     setStubLoading(true);
     setMessage("");
+    setSourceSummaries([]);
 
     try {
       const res = await fetch("/api/coach/ingest/run", {
@@ -53,6 +66,7 @@ export function RunGreenhouseScrapeButton() {
   async function runLiveSources() {
     setLiveLoading(true);
     setMessage("");
+    setSourceSummaries([]);
 
     try {
       const res = await fetch("/api/coach/ingest/run", {
@@ -78,8 +92,13 @@ export function RunGreenhouseScrapeButton() {
       const duplicates = data.duplicates ?? 0;
       const fetchErrorCount = data.fetch_errors?.length ?? 0;
       const sourceErrorCount = data.errors?.length ?? 0;
+      const archived = (data.source_summaries ?? []).reduce(
+        (sum, summary) => sum + (summary.archived ?? 0),
+        0
+      );
+      setSourceSummaries(data.source_summaries ?? []);
       setMessage(
-        `Live ingest complete. Fetched ${fetched} jobs, inserted ${inserted} new job(s), skipped ${duplicates} duplicate(s).${fetchErrorCount || sourceErrorCount ? ` ${fetchErrorCount} fetch issue(s), ${sourceErrorCount} source error(s).` : ""}`
+        `Live ingest complete. Fetched ${fetched} jobs, inserted ${inserted} new job(s), skipped ${duplicates} duplicate(s), archived ${archived} stale job(s).${fetchErrorCount || sourceErrorCount ? ` ${fetchErrorCount} fetch issue(s), ${sourceErrorCount} source error(s).` : ""}`
       );
     } catch {
       setMessage("Unexpected error while running live ingest");
@@ -99,6 +118,35 @@ export function RunGreenhouseScrapeButton() {
         </button>
       </div>
       {message ? <p style={{ margin: 0, fontSize: 13 }}>{message}</p> : null}
+      {sourceSummaries.length ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          {sourceSummaries.map((summary) => {
+            const label = summary.company_name?.trim() || summary.source_type || summary.source_id || "source";
+            return (
+              <div
+                key={`${summary.source_id ?? label}`}
+                style={{
+                  display: "grid",
+                  gap: 4,
+                  padding: "10px 12px",
+                  border: "1px solid #dbe4f0",
+                  borderRadius: 12,
+                  background: "#f8fafc",
+                  fontSize: 13,
+                }}
+              >
+                <strong style={{ color: "#0f172a" }}>
+                  {label} {summary.source_type ? `(${summary.source_type})` : ""}
+                </strong>
+                <span style={{ color: "#526071" }}>
+                  Fetched {summary.fetched ?? 0}, inserted {summary.inserted ?? 0}, duplicates {summary.duplicates ?? 0}, archived {summary.archived ?? 0}
+                  {summary.skipped_no_profiles ? ", skipped because the client has no job profile" : ""}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

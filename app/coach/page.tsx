@@ -308,7 +308,8 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
   const { data: allJobs, error: allJobsError } = await supabase
     .from("jobs")
     .select("id, title, company, link, lane, client_status")
-    .eq("is_test", false);
+    .eq("is_test", false)
+    .eq("source_active", true);
 
   const { data: clients, error: clientsError } = await supabase
     .from("clients")

@@ -81,6 +81,7 @@ export async function GET(req: Request) {
         .from("jobs")
         .select("id, title, company, link, location, lane, client_notes, internal_notes, outcome_status, last_response_at, created_at, updated_at")
         .eq("is_test", false)
+        .eq("source_active", true)
         .order("created_at", { ascending: false })
         .limit(500),
       auth.supabase

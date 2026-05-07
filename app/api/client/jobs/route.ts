@@ -92,6 +92,7 @@ export async function GET(req: NextRequest) {
       .select(JOB_SELECT_FIELDS)
       .in("id", jobIds)
       .eq("is_test", false)
+      .eq("source_active", true)
       .order("created_at", { ascending: false });
 
     if (jobsError) {

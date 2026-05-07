@@ -41,7 +41,13 @@ type SourceRunSummary = {
   fetched: number;
   inserted: number;
   duplicates: number;
+  archived: number;
   skipped_no_profiles: boolean;
+};
+
+type ExistingJobRow = {
+  id: string;
+  link: string | null;
 };
 
 type HardenedFetchResult =
@@ -278,17 +284,61 @@ async function fetchJobsForSource(
   }
 }
 
-async function fetchExistingLinks(
+async function fetchExistingJobsByLink(
   supabase: ReturnType<typeof createClient>,
   links: string[]
-): Promise<Set<string>> {
-  if (links.length === 0) return new Set();
-  const { data, error } = await supabase
+): Promise<Map<string, ExistingJobRow>> {
+  if (links.length === 0) return new Map();
+  const { data, error } = await (supabase as any)
     .from("jobs")
-    .select("link")
+    .select("id, link")
     .in("link", links);
-  if (error || !data) return new Set();
-  return new Set((data as any[]).map((d) => d.link).filter(Boolean) as string[]);
+  if (error || !data) return new Map();
+
+  const rows = (data as ExistingJobRow[]).filter((row) => typeof row.link === "string" && row.link.trim().length > 0);
+  return new Map(rows.map((row) => [String(row.link).trim(), row]));
+}
+
+async function reconcileSourceJobs(
+  supabase: ReturnType<typeof createClient>,
+  sourceId: string,
+  liveLinks: string[],
+  seenAtIso: string
+): Promise<number> {
+  const { data, error } = await (supabase as any)
+    .from("jobs")
+    .select("id, link")
+    .eq("ingest_source", sourceId)
+    .eq("is_test", false);
+
+  if (error || !data) {
+    console.error("[INGEST][reconcile][ERROR]", { sourceId, error });
+    return 0;
+  }
+
+  const liveLinkSet = new Set(liveLinks.filter((link) => link.length > 0));
+  const staleIds = (data as ExistingJobRow[])
+    .filter((row) => {
+      const link = (row.link ?? "").trim();
+      return link.length > 0 && !liveLinkSet.has(link);
+    })
+    .map((row) => row.id);
+
+  if (staleIds.length === 0) {
+    return 0;
+  }
+
+  const { error: updateError } = await (supabase as any)
+    .from("jobs")
+    .update({ source_active: false })
+    .in("id", staleIds);
+
+  if (updateError) {
+    console.error("[INGEST][reconcile][UPDATE_ERROR]", { sourceId, updateError, staleIds: staleIds.length, seenAtIso });
+    return 0;
+  }
+
+  return staleIds.length;
 }
 
 export async function POST(req: Request) {
@@ -344,6 +394,7 @@ export async function POST(req: Request) {
     const sourceSummaries: SourceRunSummary[] = [];
 
     for (const source of sources as any[]) {
+      const seenAtIso = new Date().toISOString();
       const sourceSummary: SourceRunSummary = {
         source_id: source.id,
         source_type: source.source_type,
@@ -352,6 +403,7 @@ export async function POST(req: Request) {
         fetched: 0,
         inserted: 0,
         duplicates: 0,
+        archived: 0,
         skipped_no_profiles: false,
       };
 
@@ -377,10 +429,29 @@ export async function POST(req: Request) {
         sourceSummary.fetched = normalized.length;
         fetchedCount += normalized.length;
         const links = normalized.map((j) => j.link).filter(Boolean) as string[];
-        const existing = await fetchExistingLinks(supabase, links);
+        const existingByLink = await fetchExistingJobsByLink(supabase, links);
 
         for (const job of normalized) {
-          if (job.link && existing.has(job.link)) {
+          const existing = job.link ? existingByLink.get(job.link) : null;
+
+          if (existing) {
+            const { error: updateExistingError } = await supabase
+              .from("jobs")
+              .update({
+                title: job.title,
+                company: job.company,
+                location: job.location ?? null,
+                remote_type: job.remote_type ?? "unknown",
+                source_active: true,
+                source_last_seen_at: seenAtIso,
+                ingested_at: seenAtIso,
+              })
+              .eq("id", existing.id);
+
+            if (updateExistingError) {
+              console.error("[INGEST][existing_job_update][ERROR]", updateExistingError);
+            }
+
             duplicateCount += 1;
             sourceSummary.duplicates += 1;
             continue;
@@ -402,7 +473,9 @@ export async function POST(req: Request) {
               remote_type: job.remote_type ?? "unknown",
               source: source.source_type,
               ingest_source: source.id,
-              ingested_at: new Date(),
+              ingested_at: seenAtIso,
+              source_active: true,
+              source_last_seen_at: seenAtIso,
             })
             .select("id")
             .single();
@@ -483,6 +556,13 @@ export async function POST(req: Request) {
           insertedCount += 1;
           sourceSummary.inserted += 1;
         }
+
+        sourceSummary.archived = await reconcileSourceJobs(
+          supabase,
+          source.id,
+          links,
+          seenAtIso
+        );
 
         sourceSummaries.push(sourceSummary);
       } catch (e: any) {
