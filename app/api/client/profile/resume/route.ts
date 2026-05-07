@@ -2,11 +2,19 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import {
-  type ExtractedResumeProfile,
-  extractProfileFromResumeText,
-  extractTextFromResumeFile,
-} from "@/lib/resume/extractProfileFromResume";
+
+type ExtractedResumeProfile = {
+  file_name: string;
+  primary_role: string;
+  secondary_role: string;
+  career_level: "" | "early" | "mid" | "senior" | "executive";
+  core_skills: string[];
+  industry_keywords: string[];
+  preferred_locations: string[];
+  remote_preference: "remote" | "hybrid" | "onsite" | "all";
+  dealbreakers: string[];
+  text_preview: string;
+};
 
 type StoredResumeUpload = {
   id: string;
@@ -108,6 +116,10 @@ export async function POST(req: Request) {
   try {
     const auth = await getAuthedUser(req);
     if ("error" in auth) return auth.error;
+
+    const { extractProfileFromResumeText, extractTextFromResumeFile } = await import(
+      "@/lib/resume/extractProfileFromResume"
+    );
 
     const formData = await req.formData();
     const file = formData.get("resume");

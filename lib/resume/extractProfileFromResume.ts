@@ -1,6 +1,3 @@
-import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
-import WordExtractor from "word-extractor";
 import { ALL_JOB_ROLE_OPTIONS } from "@/lib/profile/jobRoleCatalog";
 
 type ResumeKind = "pdf" | "docx" | "doc" | "text" | "rtf" | "unknown";
@@ -342,6 +339,7 @@ function extractDealbreakers(text: string): string[] {
 }
 
 async function extractWordDocumentText(bytes: Buffer): Promise<string> {
+  const { default: WordExtractor } = await import("word-extractor");
   const extractor = new WordExtractor();
   const document = await extractor.extract(bytes);
   return normalizeWhitespace(document.getBody());
@@ -355,6 +353,7 @@ export async function extractTextFromResumeFile(file: File): Promise<string> {
 
   if (resumeKind === "pdf") {
     try {
+      const { PDFParse } = await import("pdf-parse");
       const parser = new PDFParse({ data: bytes });
       try {
         const result = await parser.getText();
@@ -369,6 +368,7 @@ export async function extractTextFromResumeFile(file: File): Promise<string> {
 
   if (resumeKind === "docx") {
     try {
+      const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ buffer: bytes });
       return normalizeWhitespace(result.value);
     } catch {
