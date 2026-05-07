@@ -33,6 +33,17 @@ type FetchError = {
   message: string;
 };
 
+type SourceRunSummary = {
+  source_id: string;
+  source_type: IngestionSource["source_type"];
+  company_name: string | null;
+  client_id: string | null;
+  fetched: number;
+  inserted: number;
+  duplicates: number;
+  skipped_no_profiles: boolean;
+};
+
 type HardenedFetchResult =
   | { ok: true; res: Response }
   | { ok: false; errorMessage: string };
@@ -326,10 +337,24 @@ export async function POST(req: Request) {
     }
 
     let insertedCount = 0;
+    let fetchedCount = 0;
+    let duplicateCount = 0;
     const errors: Array<{ source_id: string; message: string }> = [];
     const fetchErrors: FetchError[] = [];
+    const sourceSummaries: SourceRunSummary[] = [];
 
     for (const source of sources as any[]) {
+      const sourceSummary: SourceRunSummary = {
+        source_id: source.id,
+        source_type: source.source_type,
+        company_name: source.company_name ?? null,
+        client_id: source.client_id ?? null,
+        fetched: 0,
+        inserted: 0,
+        duplicates: 0,
+        skipped_no_profiles: false,
+      };
+
       try {
         const { data: profiles, error: profilesError } = await supabase
           .from("client_job_profiles")
@@ -338,19 +363,28 @@ export async function POST(req: Request) {
 
         if (profilesError) {
           console.error("[INGEST][profiles][ERROR]", profilesError);
+          sourceSummaries.push(sourceSummary);
           continue;
         }
 
         if (!profiles || profiles.length === 0) {
+          sourceSummary.skipped_no_profiles = true;
+          sourceSummaries.push(sourceSummary);
           continue;
         }
 
         const normalized = await fetchJobsForSource(source, fetchErrors);
+        sourceSummary.fetched = normalized.length;
+        fetchedCount += normalized.length;
         const links = normalized.map((j) => j.link).filter(Boolean) as string[];
         const existing = await fetchExistingLinks(supabase, links);
 
         for (const job of normalized) {
-          if (job.link && existing.has(job.link)) continue;
+          if (job.link && existing.has(job.link)) {
+            duplicateCount += 1;
+            sourceSummary.duplicates += 1;
+            continue;
+          }
 
           const jobId = crypto
             .createHash("sha256")
@@ -447,18 +481,25 @@ export async function POST(req: Request) {
 
           if (eventErr) continue;
           insertedCount += 1;
+          sourceSummary.inserted += 1;
         }
+
+        sourceSummaries.push(sourceSummary);
       } catch (e: any) {
         errors.push({
           source_id: source.id,
           message: e?.message ?? "Unknown error",
         });
+        sourceSummaries.push(sourceSummary);
       }
     }
 
     return NextResponse.json({
       ok: true,
       inserted: insertedCount,
+      fetched: fetchedCount,
+      duplicates: duplicateCount,
+      source_summaries: sourceSummaries,
       errors,
       fetch_errors: fetchErrors,
     });

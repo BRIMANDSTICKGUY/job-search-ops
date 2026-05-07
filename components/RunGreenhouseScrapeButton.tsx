@@ -7,6 +7,8 @@ type ScrapeResponse = {
   ingested?: number;
   total?: number;
   inserted?: number;
+  fetched?: number;
+  duplicates?: number;
   errors?: Array<{ source_id?: string; message?: string }>;
   fetch_errors?: Array<{ source_type?: string; source_url?: string | null; message?: string }>;
   error?: string;
@@ -72,10 +74,12 @@ export function RunGreenhouseScrapeButton() {
       }
 
       const inserted = data.inserted ?? 0;
+      const fetched = data.fetched ?? 0;
+      const duplicates = data.duplicates ?? 0;
       const fetchErrorCount = data.fetch_errors?.length ?? 0;
       const sourceErrorCount = data.errors?.length ?? 0;
       setMessage(
-        `Live ingest complete. Inserted ${inserted} jobs across active sources.${fetchErrorCount || sourceErrorCount ? ` ${fetchErrorCount} fetch issue(s), ${sourceErrorCount} source error(s).` : ""}`
+        `Live ingest complete. Fetched ${fetched} jobs, inserted ${inserted} new job(s), skipped ${duplicates} duplicate(s).${fetchErrorCount || sourceErrorCount ? ` ${fetchErrorCount} fetch issue(s), ${sourceErrorCount} source error(s).` : ""}`
       );
     } catch {
       setMessage("Unexpected error while running live ingest");
