@@ -83,9 +83,17 @@ export default function ClientDashboard() {
 
   if (loading) {
     return (
-      <main style={{ padding: 24 }}>
-        <h1>Client Dashboard</h1>
-        <p>Loading...</p>
+      <main
+        style={{
+          minHeight: "100vh",
+          display: "grid",
+          placeItems: "center",
+          padding: 24,
+          background: "linear-gradient(180deg, #f4f7fb 0%, #eef3f8 100%)",
+          color: "#526071",
+        }}
+      >
+        <p style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Checking your session...</p>
       </main>
     );
   }

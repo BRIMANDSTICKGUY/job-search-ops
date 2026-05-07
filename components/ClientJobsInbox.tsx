@@ -81,9 +81,20 @@ export default function ClientJobsInbox() {
 
   return (
     <div style={{ padding: "40px" }}>
-      <h1 style={{ fontSize: "28px", marginBottom: "20px" }}>Job Inbox</h1>
+      {loading ? (
+        <div
+          style={{
+            minHeight: "50vh",
+            display: "grid",
+            placeItems: "center",
+            color: "#526071",
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>Checking your session...</p>
+        </div>
+      ) : null}
+      {!loading ? <h1 style={{ fontSize: "28px", marginBottom: "20px" }}>Job Inbox</h1> : null}
 
-      {loading ? <p>Loading...</p> : null}
       {!loading && error ? <p style={{ color: "#b91c1c" }}>{error}</p> : null}
       {!loading && !error && jobs.length === 0 ? <p>No jobs available yet.</p> : null}
 
