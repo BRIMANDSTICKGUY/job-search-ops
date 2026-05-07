@@ -445,7 +445,18 @@ export function ClientProfileForm() {
         body,
       });
 
-      const payload = (await res.json()) as ResumeExtractionResponse;
+      const rawResponse = await res.text();
+      let payload: ResumeExtractionResponse;
+
+      try {
+        payload = JSON.parse(rawResponse) as ResumeExtractionResponse;
+      } catch {
+        payload = {
+          ok: false,
+          error: rawResponse.trim() || `Resume upload failed with status ${res.status}`,
+        };
+      }
+
       if (!res.ok || !payload.ok || !payload.extracted) {
         setError(payload.error ?? "Failed to interpret resume");
         setToast({ tone: "error", message: payload.error ?? "Failed to interpret resume." });

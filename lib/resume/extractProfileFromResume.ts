@@ -3,6 +3,8 @@ import { PDFParse } from "pdf-parse";
 import WordExtractor from "word-extractor";
 import { ALL_JOB_ROLE_OPTIONS } from "@/lib/profile/jobRoleCatalog";
 
+type ResumeKind = "pdf" | "docx" | "doc" | "text" | "rtf" | "unknown";
+
 export type ExtractedResumeProfile = {
   file_name: string;
   primary_role: string;
@@ -213,6 +215,46 @@ function normalizeWhitespace(value: string): string {
   return value.replace(/\u0000/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function inferResumeKind(file: File, lowerName: string): ResumeKind {
+  const contentType = file.type.toLowerCase();
+
+  if (contentType === "application/pdf" || lowerName.endsWith(".pdf")) return "pdf";
+  if (
+    contentType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    lowerName.endsWith(".docx")
+  ) {
+    return "docx";
+  }
+  if (contentType === "application/msword" || lowerName.endsWith(".doc")) return "doc";
+  if (
+    contentType === "application/rtf" ||
+    contentType === "text/rtf" ||
+    contentType === "application/x-rtf" ||
+    lowerName.endsWith(".rtf")
+  ) {
+    return "rtf";
+  }
+  if (
+    contentType.startsWith("text/") ||
+    lowerName.endsWith(".txt") ||
+    lowerName.endsWith(".md")
+  ) {
+    return "text";
+  }
+
+  return "unknown";
+}
+
+function stripRtfToText(value: string): string {
+  return normalizeWhitespace(
+    value
+      .replace(/\\par[d]?/g, "\n")
+      .replace(/\\'[0-9a-fA-F]{2}/g, " ")
+      .replace(/\\[a-z]+-?\d* ?/gi, " ")
+      .replace(/[{}]/g, " ")
+  );
+}
+
 function unique(items: string[]): string[] {
   return Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
 }
@@ -309,8 +351,9 @@ export async function extractTextFromResumeFile(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
   const bytes = Buffer.from(arrayBuffer);
   const lowerName = file.name.toLowerCase();
+  const resumeKind = inferResumeKind(file, lowerName);
 
-  if (file.type === "application/pdf" || lowerName.endsWith(".pdf")) {
+  if (resumeKind === "pdf") {
     try {
       const parser = new PDFParse({ data: bytes });
       try {
@@ -324,19 +367,16 @@ export async function extractTextFromResumeFile(file: File): Promise<string> {
     }
   }
 
-  if (
-    file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    lowerName.endsWith(".docx")
-  ) {
+  if (resumeKind === "docx") {
     try {
       const result = await mammoth.extractRawText({ buffer: bytes });
       return normalizeWhitespace(result.value);
     } catch {
-      return extractWordDocumentText(bytes);
+      throw new Error("This DOCX file could not be read. Try exporting it again as DOCX, PDF, or plain text.");
     }
   }
 
-  if (file.type === "application/msword" || lowerName.endsWith(".doc")) {
+  if (resumeKind === "doc") {
     try {
       return await extractWordDocumentText(bytes);
     } catch {
@@ -344,16 +384,15 @@ export async function extractTextFromResumeFile(file: File): Promise<string> {
     }
   }
 
-  if (
-    file.type.startsWith("text/") ||
-    lowerName.endsWith(".txt") ||
-    lowerName.endsWith(".md") ||
-    lowerName.endsWith(".rtf")
-  ) {
+  if (resumeKind === "rtf") {
+    return stripRtfToText(bytes.toString("utf8"));
+  }
+
+  if (resumeKind === "text") {
     return normalizeWhitespace(bytes.toString("utf8"));
   }
 
-  throw new Error("Unsupported resume format. Upload PDF, DOCX, TXT, MD, or RTF.");
+  throw new Error("Unsupported resume format. Upload PDF, DOCX, DOC, TXT, MD, or RTF.");
 }
 
 export function extractProfileFromResumeText(
