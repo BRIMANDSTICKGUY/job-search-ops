@@ -217,6 +217,13 @@ function safeParse<T>(raw: string | null): T | null {
   }
 }
 
+type BoardBootstrapResponse = {
+  ok: boolean;
+  clients?: Client[];
+  jobs?: Job[];
+  error?: string;
+};
+
 function makeEmptyState(): AppState {
   return {
     version: 1,
@@ -301,6 +308,8 @@ export default function Page() {
   // app state
   const [state, setState] = useState<AppState>(() => makeEmptyState());
   const [hydrated, setHydrated] = useState(false);
+  const [boardSource, setBoardSource] = useState<"local" | "live">("local");
+  const [liveBoardError, setLiveBoardError] = useState<string | null>(null);
 
   // UI states
   const [search, setSearch] = useState("");
@@ -324,10 +333,36 @@ export default function Page() {
   // Import input ref
   const importRef = useRef<HTMLInputElement | null>(null);
 
-  // --- first hydration: load LS + origin ---
-  useEffect(() => {
-    setOrigin(window.location.origin);
+  async function fetchLiveBoard() {
+    const {
+      data: { session },
+    } = await getSupabaseBrowser().auth.getSession();
 
+    const token = session?.access_token;
+    if (!token) {
+      throw new Error("Unauthorized");
+    }
+
+    const response = await fetch("/api/board", {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    const payload = (await response.json()) as BoardBootstrapResponse;
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error ?? "Failed to load live board");
+    }
+
+    return {
+      clients: sanitizeClients(payload.clients),
+      jobs: sanitizeJobs(payload.jobs),
+    };
+  }
+
+  function loadLocalBoard() {
     const loaded = safeParse<AppState>(window.localStorage.getItem(STORAGE_KEY));
     if (loaded && typeof loaded === "object") {
       const normalized: AppState = {
@@ -345,18 +380,124 @@ export default function Page() {
       setState(makeEmptyState());
     }
 
-    setHydrated(true);
+    setBoardSource("local");
+  }
+
+  async function reloadLiveBoard() {
+    const liveBoard = await fetchLiveBoard();
+
+    setState((current) => {
+      const validSelectedJobIds = current.selectedJobIds.filter((jobId) =>
+        liveBoard.jobs.some((job) => job.id === jobId)
+      );
+      const selectedClientStillExists = current.selectedClientId
+        ? liveBoard.clients.some((client) => client.id === current.selectedClientId)
+        : false;
+
+      return {
+        ...current,
+        clients: liveBoard.clients,
+        jobs: liveBoard.jobs,
+        selectedJobIds: validSelectedJobIds,
+        selectedClientId: selectedClientStillExists
+          ? current.selectedClientId
+          : current.mode === "client"
+            ? liveBoard.clients[0]?.id
+            : undefined,
+      };
+    });
+
+    setBoardSource("live");
+    setLiveBoardError(null);
+  }
+
+  async function patchLiveJob(jobId: string, payload: { lane?: UpperLaneId; outcome_status?: Job["outcome_status"] }) {
+    const {
+      data: { session },
+    } = await getSupabaseBrowser().auth.getSession();
+
+    const token = session?.access_token;
+    if (!token) {
+      throw new Error("Unauthorized");
+    }
+
+    const response = await fetch(`/api/board/jobs/${encodeURIComponent(jobId)}`, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const body = (await response.json()) as { ok?: boolean; error?: string };
+    if (!response.ok || !body.ok) {
+      throw new Error(body.error ?? "Failed to update job");
+    }
+  }
+
+  async function mutateLiveAssignment(jobId: string, clientId: string, method: "POST" | "DELETE") {
+    const {
+      data: { session },
+    } = await getSupabaseBrowser().auth.getSession();
+
+    const token = session?.access_token;
+    if (!token) {
+      throw new Error("Unauthorized");
+    }
+
+    const response = await fetch(`/api/board/jobs/${encodeURIComponent(jobId)}/assignments`, {
+      method,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ client_id: clientId }),
+    });
+
+    const body = (await response.json()) as { ok?: boolean; error?: string };
+    if (!response.ok || !body.ok) {
+      throw new Error(body.error ?? "Failed to update assignment");
+    }
+  }
+
+  // --- first hydration: load LS + origin ---
+  useEffect(() => {
+    let active = true;
+
+    async function hydrateBoard() {
+      setOrigin(window.location.origin);
+
+      try {
+        await reloadLiveBoard();
+      } catch (error) {
+        if (!active) return;
+        loadLocalBoard();
+        setLiveBoardError(
+          error instanceof Error && error.message !== "Unauthorized"
+            ? `${error.message}. Showing local browser data instead.`
+            : null
+        );
+      } finally {
+        if (active) {
+          setHydrated(true);
+        }
+      }
+    }
+
+    void hydrateBoard();
 
     return () => {
+      active = false;
       if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
     };
   }, []);
 
   // --- persist to LS after hydration ---
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || boardSource !== "local") return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [hydrated, state]);
+  }, [boardSource, hydrated, state]);
 
   // --- derived: selected client ---
   const selectedClient = useMemo(() => {
@@ -450,6 +591,11 @@ export default function Page() {
   }
 
   function addJob() {
+    if (boardSource === "live") {
+      void addIngestedJob(false);
+      return;
+    }
+
     const title = newTitle.trim();
     const company = newCompany.trim();
     const link = newLink.trim();
@@ -482,13 +628,18 @@ export default function Page() {
     setNewLink("");
   }
 
-  async function addIngestedJob() {
+  async function addIngestedJob(trackIngestionEvent = true) {
     const title = newTitle.trim();
     const company = newCompany.trim();
     const link = newLink.trim();
     const rawPayload = newIngestText.trim();
 
     if (!title || !company) return;
+
+    if (boardSource !== "live") {
+      addJob();
+      return;
+    }
 
     const { data: jobData, error: jobErr } = await getSupabaseBrowser()
       .from("jobs")
@@ -501,42 +652,31 @@ export default function Page() {
       .select("id")
       .single();
 
-    if (jobErr || !jobData) return;
+    if (jobErr || !jobData) {
+      setLiveBoardError(jobErr?.message ?? "Failed to save live job");
+      return;
+    }
 
-    const sourceIdentifier =
-      link || (rawPayload ? rawPayload.slice(0, 140) : "manual");
+    if (trackIngestionEvent) {
+      const sourceIdentifier = link || (rawPayload ? rawPayload.slice(0, 140) : "manual");
 
-    const { error: ingestErr } = await getSupabaseBrowser()
-      .from("job_ingestion_events")
-      .insert({
-        job_id: jobData.id,
-        source_type: "manual",
-        source_identifier: sourceIdentifier,
-        raw_payload: rawPayload || null,
-      });
+      const { error: ingestErr } = await getSupabaseBrowser()
+        .from("job_ingestion_events")
+        .insert({
+          job_id: jobData.id,
+          source_type: "manual",
+          source_identifier: sourceIdentifier,
+          raw_payload: rawPayload || null,
+        });
 
-    if (ingestErr) return;
+      if (ingestErr) {
+        setLiveBoardError(ingestErr.message ?? "Failed to attach ingestion record");
+        return;
+      }
+    }
 
-    const job: Job = {
-      id: jobData.id,
-      title,
-      company,
-      link,
-      location: "",
-      salary: "",
-      lane: "inbox",
-      assignedClientIds: [],
-      clientNotes: "",
-      internalNotes: "",
-      createdAt: now(),
-      movedAt: now(),
-    };
-
-    setState((s) => ({
-      ...s,
-      jobs: [job, ...s.jobs],
-      activeLane: "inbox",
-    }));
+    await reloadLiveBoard();
+    setState((s) => ({ ...s, activeLane: "inbox" }));
 
     setNewTitle("");
     setNewCompany("");
@@ -545,6 +685,18 @@ export default function Page() {
   }
 
   function moveJob(jobId: string, lane: UpperLaneId) {
+    if (boardSource === "live") {
+      void (async () => {
+        try {
+          await patchLiveJob(jobId, { lane });
+          await reloadLiveBoard();
+        } catch (error) {
+          setLiveBoardError(error instanceof Error ? error.message : "Failed to move job");
+        }
+      })();
+      return;
+    }
+
     setState((s) => ({
       ...s,
       jobs: s.jobs.map((j) => {
@@ -556,6 +708,20 @@ export default function Page() {
 
   function bulkMoveSelected() {
     const target = bulkMoveTarget;
+
+    if (boardSource === "live") {
+      void (async () => {
+        try {
+          await Promise.all(state.selectedJobIds.map((jobId) => patchLiveJob(jobId, { lane: target })));
+          await reloadLiveBoard();
+          setState((s) => ({ ...s, selectedJobIds: [] }));
+        } catch (error) {
+          setLiveBoardError(error instanceof Error ? error.message : "Failed to move selected jobs");
+        }
+      })();
+      return;
+    }
+
     setState((s) => {
       const selected = new Set(s.selectedJobIds);
       if (selected.size === 0) return s;
@@ -584,6 +750,18 @@ export default function Page() {
   function addClientToJob(jobId: string, clientId: string) {
     if (!clientId) return;
 
+    if (boardSource === "live") {
+      void (async () => {
+        try {
+          await mutateLiveAssignment(jobId, clientId, "POST");
+          await reloadLiveBoard();
+        } catch (error) {
+          setLiveBoardError(error instanceof Error ? error.message : "Failed to assign client");
+        }
+      })();
+      return;
+    }
+
     setState((s) => ({
       ...s,
       jobs: s.jobs.map((j) => {
@@ -595,6 +773,18 @@ export default function Page() {
   }
 
   function removeClientFromJob(jobId: string, clientId: string) {
+    if (boardSource === "live") {
+      void (async () => {
+        try {
+          await mutateLiveAssignment(jobId, clientId, "DELETE");
+          await reloadLiveBoard();
+        } catch (error) {
+          setLiveBoardError(error instanceof Error ? error.message : "Failed to remove client assignment");
+        }
+      })();
+      return;
+    }
+
     setState((s) => ({
       ...s,
       jobs: s.jobs.map((j) => {
@@ -607,6 +797,19 @@ export default function Page() {
   function bulkAssignSelected() {
     const clientId = bulkAssignClientId;
     if (!clientId) return;
+
+    if (boardSource === "live") {
+      void (async () => {
+        try {
+          await Promise.all(state.selectedJobIds.map((jobId) => mutateLiveAssignment(jobId, clientId, "POST")));
+          await reloadLiveBoard();
+          setState((s) => ({ ...s, selectedJobIds: [] }));
+        } catch (error) {
+          setLiveBoardError(error instanceof Error ? error.message : "Failed to assign selected jobs");
+        }
+      })();
+      return;
+    }
 
     setState((s) => {
       const selected = new Set(s.selectedJobIds);
@@ -625,6 +828,10 @@ export default function Page() {
   }
 
   function setNotes(jobId: string, field: "clientNotes" | "internalNotes", value: string) {
+    if (boardSource === "live") {
+      return;
+    }
+
     setState((s) => ({
       ...s,
       jobs: s.jobs.map((j) => (j.id === jobId ? { ...j, [field]: value } : j)),
@@ -632,6 +839,18 @@ export default function Page() {
   }
 
   function setOutcome(jobId: string, outcome_status: Job["outcome_status"]) {
+    if (boardSource === "live") {
+      void (async () => {
+        try {
+          await patchLiveJob(jobId, { outcome_status });
+          await reloadLiveBoard();
+        } catch (error) {
+          setLiveBoardError(error instanceof Error ? error.message : "Failed to update outcome");
+        }
+      })();
+      return;
+    }
+
     setState((s) => ({
       ...s,
       jobs: s.jobs.map((j) =>
@@ -643,10 +862,18 @@ export default function Page() {
   }
 
   function clearData() {
+    if (boardSource === "live") {
+      void reloadLiveBoard();
+      setState((s) => ({ ...s, selectedJobIds: [], activeLane: "inbox" }));
+      return;
+    }
+
     setState(makeEmptyState());
   }
 
   function loadSampleData() {
+    setBoardSource("local");
+    setLiveBoardError(null);
     const t = now();
     const twannaId = state.clients.find((c) => c.name.toLowerCase() === "twanna")?.id ?? "c_twanna";
     const dianeId = state.clients.find((c) => c.name.toLowerCase() === "diane")?.id ?? "c_diane";
@@ -836,9 +1063,16 @@ export default function Page() {
             <p style={{ ...mutedTextStyle, marginBottom: 14 }}>
               Switch modes, manage client context, and keep backups without falling back to the older utility-strip layout.
             </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+              <span style={badgeStyle}>{boardSource === "live" ? "Live ingest board" : "Local demo board"}</span>
+              {liveBoardError ? <span style={{ color: "#b45309", fontSize: 13 }}>{liveBoardError}</span> : null}
+            </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {boardSource === "live" ? (
+                <button onClick={() => void reloadLiveBoard()} style={secondaryButtonStyle}>Reload live jobs</button>
+              ) : null}
               <button onClick={loadSampleData} style={secondaryButtonStyle}>Load sample data</button>
-              <button onClick={clearData} style={secondaryButtonStyle}>Clear board</button>
+              <button onClick={clearData} style={secondaryButtonStyle}>{boardSource === "live" ? "Reset live view" : "Clear board"}</button>
               <button onClick={exportBackup} title="Download a JSON backup of your current state" style={secondaryButtonStyle}>
                 Export backup
               </button>
@@ -847,7 +1081,9 @@ export default function Page() {
               </button>
             </div>
             <p style={{ ...helperCaptionStyle, marginTop: 10 }}>
-              Sample data stays in browser storage only. It is safe for walkthroughs and does not publish anything to the live job feed.
+              {boardSource === "live"
+                ? "Signed-in sessions load real jobs from Supabase. Sample data switches this browser back to a demo-only board without touching the live job feed."
+                : "Sample data stays in browser storage only. It is safe for walkthroughs and does not publish anything to the live job feed."}
             </p>
 
             <input
@@ -1035,8 +1271,12 @@ export default function Page() {
               </div>
               <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <button onClick={addJob} style={primaryButtonStyle}>Add Job</button>
-                <button onClick={addIngestedJob} style={secondaryButtonStyle}>Save as Unverified</button>
-                <span style={helperCaptionStyle}>Use the raw payload field only when you want an ingestion record attached to the job.</span>
+                <button onClick={() => void addIngestedJob(true)} style={secondaryButtonStyle}>Save as Unverified</button>
+                <span style={helperCaptionStyle}>
+                  {boardSource === "live"
+                    ? "Live mode saves into the Supabase jobs table. Use the raw payload field only when you want an ingestion record attached to the job."
+                    : "Use the raw payload field only when you want an ingestion record attached to the job."}
+                </span>
               </div>
             </div>
 
@@ -1106,6 +1346,7 @@ export default function Page() {
                   onChangeClientNotes={(v) => setNotes(job.id, "clientNotes", v)}
                   onChangeInternalNotes={(v) => setNotes(job.id, "internalNotes", v)}
                   onSetOutcome={(v) => setOutcome(job.id, v)}
+                  notesMode={boardSource === "live" ? "context" : "local"}
                 />
               ))
             )}
@@ -1124,7 +1365,7 @@ export default function Page() {
       )}
 
       <div style={{ marginTop: 18, fontSize: 12, opacity: 0.75 }}>
-        Local storage key: <code>{STORAGE_KEY}</code>
+        {boardSource === "live" ? "Live source: Supabase jobs + job assignments" : <>Local storage key: <code>{STORAGE_KEY}</code></>}
       </div>
       </div>
     </main>
@@ -1171,8 +1412,9 @@ function JobCard(props: {
   onChangeClientNotes: (value: string) => void;
   onChangeInternalNotes: (value: string) => void;
   onSetOutcome: (value: Job["outcome_status"]) => void;
+  notesMode: "local" | "context";
 }) {
-  const { mode, job, clients, selected } = props;
+  const { mode, job, clients, selected, notesMode } = props;
 
   const assignedClients = useMemo(() => {
     const map = new Map(clients.map((c) => [c.id, c]));
@@ -1346,16 +1588,22 @@ function JobCard(props: {
           </div>
         )}
 
-        <div style={{ marginTop: 10, minWidth: 0 }}>
-          <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Client Notes (client-safe)</div>
-          <textarea
-            value={job.clientNotes}
-            onChange={(e) => props.onChangeClientNotes(e.target.value)}
-            rows={2}
-            style={{ display: "block", width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: 8, resize: "vertical" }}
-            readOnly={mode === "client"}
-          />
-        </div>
+        {notesMode === "local" ? (
+          <div style={{ marginTop: 10, minWidth: 0 }}>
+            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Client Notes (client-safe)</div>
+            <textarea
+              value={job.clientNotes}
+              onChange={(e) => props.onChangeClientNotes(e.target.value)}
+              rows={2}
+              style={{ display: "block", width: "100%", maxWidth: "100%", minWidth: 0, boxSizing: "border-box", padding: 8, resize: "vertical" }}
+              readOnly={mode === "client"}
+            />
+          </div>
+        ) : (
+          <div style={{ marginTop: 10, color: "#526071", fontSize: 13, lineHeight: 1.5 }}>
+            Persistent notes live in the Job Context panel below. Select this job to read or add saved coach and client notes.
+          </div>
+        )}
 
         {mode === "coach" && (
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
@@ -1387,7 +1635,7 @@ function JobCard(props: {
           </div>
         )}
 
-        {mode === "coach" && (
+        {mode === "coach" && notesMode === "local" && (
           <div style={{ marginTop: 10, minWidth: 0 }}>
             <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Internal Notes (coach-only)</div>
             <textarea
