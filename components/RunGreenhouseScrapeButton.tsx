@@ -6,15 +6,19 @@ type ScrapeResponse = {
   ok?: boolean;
   ingested?: number;
   total?: number;
+  inserted?: number;
+  errors?: Array<{ source_id?: string; message?: string }>;
+  fetch_errors?: Array<{ source_type?: string; source_url?: string | null; message?: string }>;
   error?: string;
 };
 
 export function RunGreenhouseScrapeButton() {
-  const [loading, setLoading] = useState(false);
+  const [stubLoading, setStubLoading] = useState(false);
+  const [liveLoading, setLiveLoading] = useState(false);
   const [message, setMessage] = useState<string>("");
 
-  async function runScrape() {
-    setLoading(true);
+  async function runGreenhouseStub() {
+    setStubLoading(true);
     setMessage("");
 
     try {
@@ -42,15 +46,58 @@ export function RunGreenhouseScrapeButton() {
     } catch {
       setMessage("Unexpected error while running scrape");
     } finally {
-      setLoading(false);
+      setStubLoading(false);
+    }
+  }
+
+  async function runLiveSources() {
+    setLiveLoading(true);
+    setMessage("");
+
+    try {
+      const res = await fetch("/api/ingest/web", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-admin-token": process.env.NEXT_PUBLIC_SCRAPE_ADMIN_TOKEN ?? "",
+        },
+        body: JSON.stringify({
+          source: "all_active_sources",
+          mode: "live",
+          source_detail: "coach_manual_trigger",
+        }),
+      });
+
+      const data = (await res.json()) as ScrapeResponse;
+
+      if (!res.ok || !data.ok) {
+        setMessage(data.error ?? "Live ingest failed");
+        return;
+      }
+
+      const inserted = data.inserted ?? 0;
+      const fetchErrorCount = data.fetch_errors?.length ?? 0;
+      const sourceErrorCount = data.errors?.length ?? 0;
+      setMessage(
+        `Live ingest complete. Inserted ${inserted} jobs across active sources.${fetchErrorCount || sourceErrorCount ? ` ${fetchErrorCount} fetch issue(s), ${sourceErrorCount} source error(s).` : ""}`
+      );
+    } catch {
+      setMessage("Unexpected error while running live ingest");
+    } finally {
+      setLiveLoading(false);
     }
   }
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      <button type="button" onClick={runScrape} disabled={loading}>
-        {loading ? "Running Scrape..." : "Run Greenhouse Scrape (Stub)"}
-      </button>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <button type="button" onClick={runLiveSources} disabled={liveLoading || stubLoading}>
+          {liveLoading ? "Running Live Ingest..." : "Run Live Source Ingest"}
+        </button>
+        <button type="button" onClick={runGreenhouseStub} disabled={stubLoading || liveLoading}>
+          {stubLoading ? "Running Stub..." : "Run Greenhouse Stub"}
+        </button>
+      </div>
       {message ? <p style={{ margin: 0, fontSize: 13 }}>{message}</p> : null}
     </div>
   );

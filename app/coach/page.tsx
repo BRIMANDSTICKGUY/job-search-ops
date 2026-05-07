@@ -561,8 +561,8 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
 
           <div style={utilityPanelStyle}>
             <p style={sectionEyebrowStyle}>Scrapers</p>
-            <h3 style={{ margin: "0 0 8px", fontSize: 20 }}>Run the Greenhouse stub</h3>
-            <p style={{ ...mutedTextStyle, marginBottom: 14 }}>Trigger a manual scrape, then review the latest run state in the table below. Select a run source to inspect the jobs it touched.</p>
+            <h3 style={{ margin: "0 0 8px", fontSize: 20 }}>Run live source ingest or the Greenhouse stub</h3>
+            <p style={{ ...mutedTextStyle, marginBottom: 14 }}>Manually run all active Greenhouse, Lever, and Ashby sources from ingestion settings, or use the Greenhouse stub for a quick diagnostic pass. Review the latest run state in the table below and open a run source to inspect the jobs it touched.</p>
             <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <RunGreenhouseScrapeButton />
             </div>
