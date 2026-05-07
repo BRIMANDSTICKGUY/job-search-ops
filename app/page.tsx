@@ -1083,26 +1083,37 @@ export default function Page() {
               Switch modes, manage client context, and keep backups without falling back to the older utility-strip layout.
             </p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-              <span style={badgeStyle}>{boardSource === "live" ? "Live ingest board" : "Local demo board"}</span>
+              <span style={badgeStyle}>{boardSource === "live" ? "Live ingest board" : "Demo sandbox"}</span>
               {liveBoardError ? <span style={{ color: "#b45309", fontSize: 13 }}>{liveBoardError}</span> : null}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               {boardSource === "live" ? (
-                <button onClick={() => void reloadLiveBoard()} style={secondaryButtonStyle}>Reload live jobs</button>
-              ) : null}
-              <button onClick={loadSampleData} style={secondaryButtonStyle}>Load sample data</button>
+                <>
+                  <button onClick={() => void reloadLiveBoard()} style={secondaryButtonStyle}>Reload live jobs</button>
+                  <button onClick={loadSampleData} style={secondaryButtonStyle}>Open demo sandbox</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => void reloadLiveBoard()} style={secondaryButtonStyle}>Return to live board</button>
+                  <button onClick={loadSampleData} style={secondaryButtonStyle}>Reload demo sandbox</button>
+                </>
+              )}
               <button onClick={clearData} style={secondaryButtonStyle}>{boardSource === "live" ? "Reset live view" : "Clear board"}</button>
-              <button onClick={exportBackup} title="Download a JSON backup of your current state" style={secondaryButtonStyle}>
-                Export backup
-              </button>
-              <button onClick={triggerImport} title="Import a previously exported backup JSON (overwrites current state)" style={secondaryButtonStyle}>
-                Import backup
-              </button>
+              {boardSource === "local" ? (
+                <>
+                  <button onClick={exportBackup} title="Download a JSON backup of your current state" style={secondaryButtonStyle}>
+                    Export backup
+                  </button>
+                  <button onClick={triggerImport} title="Import a previously exported backup JSON (overwrites current state)" style={secondaryButtonStyle}>
+                    Import backup
+                  </button>
+                </>
+              ) : null}
             </div>
             <p style={{ ...helperCaptionStyle, marginTop: 10 }}>
               {boardSource === "live"
-                ? "Signed-in sessions load real jobs from Supabase. Sample data switches this browser back to a demo-only board without touching the live job feed."
-                : "Sample data stays in browser storage only. It is safe for walkthroughs and does not publish anything to the live job feed."}
+                ? "Signed-in sessions load real jobs from Supabase. The demo sandbox is browser-only and never writes into the live ingest board."
+                : "The demo sandbox stays in browser storage only. It is safe for walkthroughs and does not publish anything to the live job feed."}
             </p>
 
             <input
@@ -1134,9 +1145,15 @@ export default function Page() {
               </select>
             </div>
 
-            <div style={{ marginTop: 14 }}>
-              <AddClientInline onAdd={addClient} />
-            </div>
+            {boardSource === "local" ? (
+              <div style={{ marginTop: 14 }}>
+                <AddClientInline onAdd={addClient} />
+              </div>
+            ) : (
+              <p style={{ ...helperCaptionStyle, marginTop: 14 }}>
+                Live mode uses clients already stored in Supabase. Use the client selector to filter or assign jobs to existing clients.
+              </p>
+            )}
           </div>
 
           <div style={utilityPanelStyle}>
