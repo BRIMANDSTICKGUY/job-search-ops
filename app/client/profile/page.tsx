@@ -1,15 +1,6 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { ClientProfileForm } from "@/components/ClientProfileForm";
 
 export default async function ClientProfilePage() {
-  const cookieStore = await cookies();
-  const accessToken = cookieStore.get("sb-access-token")?.value;
-
-  if (!accessToken) {
-    redirect("/login");
-  }
-
   return (
     <main
       style={{
