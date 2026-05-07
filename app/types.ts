@@ -11,7 +11,7 @@ export type UpperLaneId = "INBOX" | "VERIFIED" | "CLIENT-SENT" | "WATCHLIST" | "
 
 export type Mode = "coach" | "client";
 
-export type JobSourceType = "greenhouse" | "lever" | "ashby";
+export type JobSourceType = "greenhouse" | "lever" | "ashby" | "workday";
 
 export type Client = {
   id: string;

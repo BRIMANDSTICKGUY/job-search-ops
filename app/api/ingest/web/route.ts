@@ -70,6 +70,10 @@ function extractCompanySlug(baseUrl: string | null): string | null {
     }
     if (url.hostname.includes("lever.co")) return parts[0] ?? null;
     if (url.hostname.includes("ashbyhq.com")) return parts[0] ?? null;
+    if (url.pathname.includes("/recruiting/")) {
+      const recruitingIdx = parts.findIndex((p) => p === "recruiting");
+      if (recruitingIdx >= 0 && parts[recruitingIdx + 1]) return parts[recruitingIdx + 1];
+    }
     return parts[0] ?? null;
   } catch {
     return null;
@@ -77,9 +81,37 @@ function extractCompanySlug(baseUrl: string | null): string | null {
 }
 
 function companyFromSource(source: IngestionSource): string {
+  if (typeof source.company_name === "string" && source.company_name.trim().length > 0) {
+    return source.company_name.trim();
+  }
   const slug = extractCompanySlug(source.base_url);
   if (slug) return slug.replace(/[-_]/g, " ");
   return "Unknown";
+}
+
+function extractWorkdayConfig(baseUrl: string | null): { apiUrl: string; boardUrl: string } | null {
+  if (!baseUrl) return null;
+
+  try {
+    const url = new URL(baseUrl);
+    const parts = url.pathname.split("/").filter(Boolean);
+    const recruitingIdx = parts.findIndex((part) => part === "recruiting");
+
+    if (recruitingIdx < 0 || !parts[recruitingIdx + 1] || !parts[recruitingIdx + 2]) {
+      return null;
+    }
+
+    const tenant = parts[recruitingIdx + 1];
+    const site = parts[recruitingIdx + 2];
+    const origin = `${url.protocol}//${url.host}`;
+
+    return {
+      apiUrl: `${origin}/wday/cxs/${tenant}/${site}/jobs`,
+      boardUrl: `${origin}/recruiting/${tenant}/${site}`,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function hardenedFetch(url: string): Promise<HardenedFetchResult> {
@@ -268,6 +300,110 @@ async function fetchAshby(
   }));
 }
 
+async function fetchWorkday(
+  source: IngestionSource,
+  fetchErrors: FetchError[]
+): Promise<NormalizedJob[]> {
+  const sourceUrl = source.base_url;
+  if (!isValidSourceUrl(sourceUrl)) return [];
+
+  const config = extractWorkdayConfig(sourceUrl);
+  if (!config) {
+    fetchErrors.push({
+      source_type: "workday",
+      source_url: sourceUrl,
+      message: "Unsupported Workday URL. Expected a /recruiting/{tenant}/{site} board URL.",
+    });
+    return [];
+  }
+
+  const company = companyFromSource(source);
+  const jobs: NormalizedJob[] = [];
+  let offset = 0;
+  const limit = 20;
+  let total = Number.POSITIVE_INFINITY;
+
+  while (offset < total) {
+    let res: Response;
+
+    try {
+      res = await fetch(config.apiUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json,text/plain,*/*",
+          "user-agent": "JobSearchOpsBot/1.0",
+        },
+        body: JSON.stringify({ limit, offset }),
+      });
+    } catch (error) {
+      const message = serializeIngestError(error);
+      fetchErrors.push({
+        source_type: "workday",
+        source_url: sourceUrl,
+        message,
+      });
+      return jobs;
+    }
+
+    if (!res.ok) {
+      const message = `Failed to fetch from Workday: ${res.status} ${res.statusText}`;
+      console.error("Fetch failed", {
+        source_type: "workday",
+        source_url: sourceUrl,
+        message,
+      });
+      fetchErrors.push({
+        source_type: "workday",
+        source_url: sourceUrl,
+        message,
+      });
+      return jobs;
+    }
+
+    const data = (await res.json()) as {
+      jobPostings?: Array<Record<string, unknown>>;
+      total?: number;
+    };
+
+    const pageJobs = Array.isArray(data.jobPostings) ? data.jobPostings : [];
+    total = typeof data.total === "number" && Number.isFinite(data.total) ? data.total : pageJobs.length;
+
+    jobs.push(
+      ...pageJobs.map((job) => {
+        const externalPath = typeof job.externalPath === "string" ? job.externalPath : "";
+        const title = typeof job.title === "string" ? job.title : "";
+        const locationsText =
+          typeof job.locationsText === "string"
+            ? job.locationsText
+            : Array.isArray(job.locations)
+              ? (job.locations as Array<Record<string, unknown>>)
+                  .map((location) => (typeof location?.displayName === "string" ? location.displayName : ""))
+                  .filter(Boolean)
+                  .join(", ")
+              : null;
+
+        return {
+          title,
+          company,
+          location: locationsText,
+          link: externalPath ? `${config.boardUrl}${externalPath.startsWith("/") ? "" : "/"}${externalPath}` : sourceUrl,
+          source_type: "workday" as const,
+          source_url: sourceUrl,
+          raw_payload: job,
+        };
+      })
+    );
+
+    offset += pageJobs.length;
+    if (pageJobs.length === 0 || pageJobs.length < limit) {
+      break;
+    }
+  }
+
+  return jobs;
+}
+
 async function fetchJobsForSource(
   source: IngestionSource,
   fetchErrors: FetchError[]
@@ -279,6 +415,8 @@ async function fetchJobsForSource(
       return fetchLever(source, fetchErrors);
     case "ashby":
       return fetchAshby(source, fetchErrors);
+    case "workday":
+      return fetchWorkday(source, fetchErrors);
     default:
       return [];
   }
