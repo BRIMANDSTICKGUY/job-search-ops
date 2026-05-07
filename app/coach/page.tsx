@@ -218,6 +218,23 @@ type IngestRun = {
   finished_at: string | null;
   job_count: number;
   error_message: string | null;
+  metadata: {
+    fetched?: number;
+    inserted?: number;
+    duplicates?: number;
+    archived?: number;
+    source_summaries?: Array<{
+      source_id?: string;
+      source_type?: string;
+      company_name?: string | null;
+      client_id?: string | null;
+      fetched?: number;
+      inserted?: number;
+      duplicates?: number;
+      archived?: number;
+      skipped_no_profiles?: boolean;
+    }>;
+  } | null;
 };
 
 type JobAssignmentRow = {
@@ -318,7 +335,7 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
 
   const { data: ingestRuns, error: ingestRunsError } = await supabase
     .from("ingest_runs")
-    .select("id, source, status, started_at, finished_at, job_count, error_message")
+    .select("id, source, status, started_at, finished_at, job_count, error_message, metadata")
     .order("started_at", { ascending: false })
     .limit(20);
 
@@ -340,6 +357,8 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
   }
 
   const typedAllJobs = (allJobs ?? []) as Array<CoachJob & UnassignedJob>;
+  const typedIngestRuns = (ingestRuns ?? []) as IngestRun[];
+  const latestLiveIngestRun = typedIngestRuns.find((run) => run.source === "live_sources" && run.metadata);
   const assignedJobIds = new Set(assignedJobIdList);
   const typedJobs: CoachJob[] = typedAllJobs
     .filter((job) => assignedJobIds.has(job.id))
@@ -578,6 +597,69 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
             <p style={mutedTextStyle}>Track scraper health, retry failed runs, and open a run to inspect the jobs attached to it.</p>
           </div>
         </div>
+        {latestLiveIngestRun?.metadata ? (
+          <div
+            style={{
+              border: "1px solid #dbe4f0",
+              borderRadius: 18,
+              padding: 18,
+              background: "#f8fafc",
+              display: "grid",
+              gap: 14,
+              marginBottom: 18,
+            }}
+          >
+            <div style={{ display: "grid", gap: 6 }}>
+              <p style={sectionEyebrowStyle}>Latest Live Ingest Summary</p>
+              <h3 style={{ margin: 0, fontSize: 20 }}>Persisted source breakdown</h3>
+              <p style={mutedTextStyle}>
+                Last updated {new Date(latestLiveIngestRun.started_at).toLocaleString()} with status {latestLiveIngestRun.status}.
+              </p>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+              {[
+                ["Fetched", String(latestLiveIngestRun.metadata.fetched ?? 0)],
+                ["Inserted", String(latestLiveIngestRun.metadata.inserted ?? 0)],
+                ["Duplicates", String(latestLiveIngestRun.metadata.duplicates ?? 0)],
+                ["Archived", String(latestLiveIngestRun.metadata.archived ?? 0)],
+              ].map(([label, value]) => (
+                <div key={label} style={{ background: "#ffffff", border: "1px solid #dbe4f0", borderRadius: 14, padding: 14 }}>
+                  <div style={{ fontSize: 12, color: "#526071", marginBottom: 6 }}>{label}</div>
+                  <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.03em" }}>{value}</div>
+                </div>
+              ))}
+            </div>
+            {latestLiveIngestRun.metadata.source_summaries?.length ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                {latestLiveIngestRun.metadata.source_summaries.map((summary) => {
+                  const label = summary.company_name?.trim() || summary.source_type || summary.source_id || "source";
+                  return (
+                    <div
+                      key={`${summary.source_id ?? label}`}
+                      style={{
+                        display: "grid",
+                        gap: 4,
+                        padding: "10px 12px",
+                        border: "1px solid #dbe4f0",
+                        borderRadius: 12,
+                        background: "#ffffff",
+                        fontSize: 13,
+                      }}
+                    >
+                      <strong style={{ color: "#0f172a" }}>
+                        {label} {summary.source_type ? `(${summary.source_type})` : ""}
+                      </strong>
+                      <span style={{ color: "#526071" }}>
+                        Fetched {summary.fetched ?? 0}, inserted {summary.inserted ?? 0}, duplicates {summary.duplicates ?? 0}, archived {summary.archived ?? 0}
+                        {summary.skipped_no_profiles ? ", skipped because the client has no job profile" : ""}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <IngestRunsTable />
         {selectedRunId ? <div style={{ marginTop: 18 }}><IngestRunJobsTable runId={selectedRunId} /></div> : null}
       </section>

@@ -348,11 +348,11 @@ export function IngestRunsTable() {
                       <td style={{ ...mutedCellStyle, maxWidth: 300 }}>{formatErrorMessage(run.error_message)}</td>
                       <td style={bodyCellStyle}>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
-                          {run.status === "failed" ? (
+                          {run.status === "failed" && run.source === "greenhouse" ? (
                             <RetryIngestRunButton runId={run.id} onDone={loadRuns} />
                           ) : null}
                           <DeleteIngestRunButton runId={run.id} onDone={loadRuns} />
-                          {run.status !== "failed" ? <span>—</span> : null}
+                          {!(run.status === "failed" && run.source === "greenhouse") ? <span>—</span> : null}
                         </div>
                       </td>
                     </tr>
