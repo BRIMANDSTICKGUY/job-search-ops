@@ -96,19 +96,32 @@ function extractWorkdayConfig(baseUrl: string | null): { apiUrl: string; boardUr
     const url = new URL(baseUrl);
     const parts = url.pathname.split("/").filter(Boolean);
     const recruitingIdx = parts.findIndex((part) => part === "recruiting");
+    const hostParts = url.hostname.split(".").filter(Boolean);
 
-    if (recruitingIdx < 0 || !parts[recruitingIdx + 1] || !parts[recruitingIdx + 2]) {
-      return null;
+    if (recruitingIdx >= 0 && parts[recruitingIdx + 1] && parts[recruitingIdx + 2]) {
+      const tenant = parts[recruitingIdx + 1];
+      const site = parts[recruitingIdx + 2];
+      const origin = `${url.protocol}//${url.host}`;
+
+      return {
+        apiUrl: `${origin}/wday/cxs/${tenant}/${site}/jobs`,
+        boardUrl: `${origin}/recruiting/${tenant}/${site}`,
+      };
     }
 
-    const tenant = parts[recruitingIdx + 1];
-    const site = parts[recruitingIdx + 2];
-    const origin = `${url.protocol}//${url.host}`;
+    if (parts.length >= 2 && /^[a-z]{2}-[A-Z]{2}$/.test(parts[0]) && hostParts.length >= 3) {
+      const tenant = hostParts[0];
+      const locale = parts[0];
+      const site = parts[1];
+      const origin = `${url.protocol}//${url.host}`;
 
-    return {
-      apiUrl: `${origin}/wday/cxs/${tenant}/${site}/jobs`,
-      boardUrl: `${origin}/recruiting/${tenant}/${site}`,
-    };
+      return {
+        apiUrl: `${origin}/wday/cxs/${tenant}/${site}/jobs`,
+        boardUrl: `${origin}/${locale}/${site}`,
+      };
+    }
+
+    return null;
   } catch {
     return null;
   }
