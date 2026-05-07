@@ -199,6 +199,21 @@ const actionButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+const secondaryActionButtonStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: 40,
+  padding: "0 16px",
+  borderRadius: 999,
+  border: "1px solid #93c5fd",
+  background: "#ffffff",
+  color: "#1d4ed8",
+  fontSize: 14,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
 const toastBaseStyle: React.CSSProperties = {
   width: "100%",
   maxWidth: 640,
@@ -516,6 +531,10 @@ export function ClientProfileForm() {
     return <p>Loading profile...</p>;
   }
 
+  function scrollToEditableFields() {
+    roleTargetsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <section style={{ display: "grid", gap: 18, marginBottom: 24 }}>
       <div>
@@ -576,8 +595,16 @@ export function ClientProfileForm() {
             </p>
             <h3 style={{ margin: 0, fontSize: 20, letterSpacing: "-0.03em" }}>Review what was pulled from your resume</h3>
             <p style={{ ...helperStyle, fontSize: 13 }}>
-              These values were added into the profile form below. Check them, adjust anything that looks off, then save your profile.
+              Edit the fields in the Role Targets and Search Preferences sections below, then click {hasProfile ? "Update Profile" : "Create Profile"} to save the imported values.
             </p>
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <button type="button" onClick={scrollToEditableFields} style={secondaryActionButtonStyle}>
+              Jump to editable fields
+            </button>
+            <span style={{ color: "#526071", fontSize: 13, lineHeight: 1.5 }}>
+              You can edit primary role, secondary role, career level, skills, industries, locations, and dealbreakers before saving.
+            </span>
           </div>
           <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
             <div style={{ display: "grid", gap: 6 }}>
