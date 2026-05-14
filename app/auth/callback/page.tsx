@@ -27,9 +27,49 @@ const cardStyle: React.CSSProperties = {
 
 type OtpType = "magiclink" | "recovery" | "invite" | "email" | "email_change";
 
+type SessionStateResponse = {
+  ok?: boolean;
+  authenticated?: boolean;
+  redirectPath?: string;
+};
+
 function setAuthCookies(accessToken: string, refreshToken: string) {
   document.cookie = `sb-access-token=${encodeURIComponent(accessToken)}; Path=/; Max-Age=${THIRTY_DAYS}; SameSite=Lax`;
   document.cookie = `sb-refresh-token=${encodeURIComponent(refreshToken)}; Path=/; Max-Age=${THIRTY_DAYS}; SameSite=Lax`;
+}
+
+function hasCoachMetadata(user: { app_metadata?: unknown; user_metadata?: unknown } | null | undefined) {
+  const appRole =
+    typeof user?.app_metadata === "object" && user.app_metadata !== null
+      ? (user.app_metadata as Record<string, unknown>).role
+      : undefined;
+  const userRole =
+    typeof user?.user_metadata === "object" && user.user_metadata !== null
+      ? (user.user_metadata as Record<string, unknown>).role
+      : undefined;
+
+  return appRole === "coach" || appRole === "admin" || userRole === "coach" || userRole === "admin";
+}
+
+async function resolveRedirectPath(
+  fallbackUser?: { app_metadata?: unknown; user_metadata?: unknown } | null
+) {
+  try {
+    const response = await fetch("/api/auth/session", {
+      method: "GET",
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+
+    const payload = (await response.json()) as SessionStateResponse;
+    if (response.ok && payload.ok && payload.authenticated && typeof payload.redirectPath === "string") {
+      return payload.redirectPath;
+    }
+  } catch {
+    // Fall back to the client session metadata when the server session endpoint is unavailable.
+  }
+
+  return hasCoachMetadata(fallbackUser) ? "/coach" : "/client";
 }
 
 export default function AuthCallbackPage() {
@@ -49,7 +89,7 @@ export default function AuthCallbackPage() {
 
         if (hashAccessToken && hashRefreshToken) {
           setAuthCookies(hashAccessToken, hashRefreshToken);
-          router.replace("/client");
+          router.replace(await resolveRedirectPath());
           return;
         }
 
@@ -66,7 +106,7 @@ export default function AuthCallbackPage() {
           }
 
           setAuthCookies(data.session.access_token, data.session.refresh_token);
-          router.replace("/client");
+          router.replace(await resolveRedirectPath(data.session.user));
           return;
         }
 
@@ -87,7 +127,7 @@ export default function AuthCallbackPage() {
           }
 
           setAuthCookies(data.session.access_token, data.session.refresh_token);
-          router.replace("/client");
+          router.replace(await resolveRedirectPath(data.session.user));
           return;
         }
 
@@ -97,7 +137,7 @@ export default function AuthCallbackPage() {
 
         if (session?.access_token && session.refresh_token) {
           setAuthCookies(session.access_token, session.refresh_token);
-          router.replace("/client");
+          router.replace(await resolveRedirectPath(session.user));
           return;
         }
 

@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getCoachSession } from "@/lib/auth/coach";
 
 type MatchBand = "green" | "yellow" | "red";
 
@@ -45,19 +46,6 @@ function serverError(message: string) {
   return NextResponse.json({ ok: false, error: message }, { status: 500 });
 }
 
-function hasCoachRole(user: { app_metadata?: unknown; user_metadata?: unknown }): boolean {
-  const appRole =
-    typeof user.app_metadata === "object" && user.app_metadata !== null
-      ? (user.app_metadata as Record<string, unknown>).role
-      : undefined;
-  const userRole =
-    typeof user.user_metadata === "object" && user.user_metadata !== null
-      ? (user.user_metadata as Record<string, unknown>).role
-      : undefined;
-
-  return appRole === "coach" || userRole === "coach";
-}
-
 function emptyBands(): Record<MatchBand, MatchItem[]> {
   return { green: [], yellow: [], red: [] };
 }
@@ -71,27 +59,15 @@ export async function GET(req: Request) {
       return serverError("Missing Supabase env");
     }
 
-    const authHeader = req.headers.get("authorization");
-    const accessToken = authHeader?.startsWith("Bearer ")
-      ? authHeader.slice("Bearer ".length).trim()
-      : "";
+    const { user, isCoach } = await getCoachSession(req);
 
-    if (!accessToken) {
+    if (!user || !isCoach) {
       return unauthorized();
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser(accessToken);
-
-    if (userError || !user || !hasCoachRole(user)) {
-      return unauthorized();
-    }
 
     const url = new URL(req.url);
     const clientId = url.searchParams.get("client_id")?.trim();

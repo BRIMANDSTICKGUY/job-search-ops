@@ -3,9 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
-const SUCCESS_COOLDOWN_SECONDS = 90;
 const RATE_LIMIT_BACKOFF_SECONDS = 180;
-const RETRY_AFTER_STORAGE_KEY = "job-search-ops:magic-link-retry-after";
+const RETRY_AFTER_STORAGE_KEY = "job-search-ops:magic-link-rate-limit-retry-after";
 
 const shellStyle: React.CSSProperties = {
   minHeight: "100vh",
@@ -53,6 +52,11 @@ const buttonStyle: React.CSSProperties = {
 function setCooldown(seconds: number) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(RETRY_AFTER_STORAGE_KEY, String(Date.now() + seconds * 1000));
+}
+
+function clearCooldown() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(RETRY_AFTER_STORAGE_KEY);
 }
 
 function getRemainingCooldownSeconds() {
@@ -132,8 +136,8 @@ export default function LoginPage() {
         return;
       }
 
-      setCooldown(SUCCESS_COOLDOWN_SECONDS);
-      setCooldownSeconds(SUCCESS_COOLDOWN_SECONDS);
+      clearCooldown();
+      setCooldownSeconds(0);
       setSent(true);
     } catch {
       setError("Failed to send magic link");

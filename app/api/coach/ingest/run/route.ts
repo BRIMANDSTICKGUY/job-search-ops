@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { getCoachSupabase } from "@/lib/supabase/coach";
 import { failIngestRun, serializeIngestError, startIngestRun } from "@/lib/ingest/ingestRun";
+import { getCoachSession } from "@/lib/auth/coach";
 
 type CoachIngestBody = {
   mode?: unknown;
@@ -21,6 +22,12 @@ type LiveIngestPayload = {
 };
 
 export async function POST(req: Request) {
+  const { user, isCoach } = await getCoachSession(req);
+
+  if (!user || !isCoach) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
   let body: CoachIngestBody;
 
   try {

@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { RunGreenhouseScrapeButton } from "@/components/RunGreenhouseScrapeButton";
 import { IngestRunsTable } from "@/components/IngestRunsTable";
 import { IngestRunJobsTable } from "@/components/IngestRunJobsTable";
+import { getCoachSession } from "@/lib/auth/coach";
 
 const PAGE_SIZE = 12;
 
@@ -253,6 +254,16 @@ type CoachPageProps = {
 };
 
 export default async function CoachPage({ searchParams }: CoachPageProps) {
+  const { user, isCoach } = await getCoachSession();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  if (!isCoach) {
+    redirect("/client");
+  }
+
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const manualErrorParam = resolvedSearchParams?.manual_error;
   const manualSuccessParam = resolvedSearchParams?.manual_success;

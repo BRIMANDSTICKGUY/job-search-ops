@@ -1,6 +1,7 @@
 "use server";
 
 import { getCoachSupabase } from "@/lib/supabase/coach";
+import { getCoachSession } from "@/lib/auth/coach";
 import { revalidatePath } from "next/cache";
 
 function isUuid(value: string): boolean {
@@ -14,7 +15,17 @@ type ExistingAssignmentRow = {
   client_id_legacy: string | null;
 };
 
+async function assertCoachAccess() {
+  const { user, isCoach } = await getCoachSession();
+
+  if (!user || !isCoach) {
+    throw new Error("Unauthorized");
+  }
+}
+
 export async function updateJobLane(jobId: string, lane: string) {
+  await assertCoachAccess();
+
   const supabase = getCoachSupabase();
   if (!supabase) {
     console.error("Coach Supabase client unavailable; lane update skipped.");
@@ -34,6 +45,8 @@ export async function updateJobLane(jobId: string, lane: string) {
 }
 
 export async function assignJobToClient(jobId: string, clientId: string) {
+  await assertCoachAccess();
+
   const supabase = getCoachSupabase();
   if (!supabase) {
     console.error("Coach Supabase client unavailable; assignment skipped.");

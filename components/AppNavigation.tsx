@@ -86,13 +86,34 @@ const navButtonStyle: React.CSSProperties = {
 
 const baseRoutes = [
   { href: "/", label: "Board" },
-  { href: "/coach", label: "Coach" },
 ] as const;
+
+const coachRoutes = [{ href: "/coach", label: "Coach" }] as const;
 
 const signedInRoutes = [
   { href: "/client", label: "Client" },
   { href: "/client/profile", label: "Profile" },
 ] as const;
+
+type SessionStateResponse = {
+  ok?: boolean;
+  authenticated?: boolean;
+  email?: string | null;
+  isCoach?: boolean;
+};
+
+function hasCoachMetadata(user: { app_metadata?: unknown; user_metadata?: unknown } | null | undefined) {
+  const appRole =
+    typeof user?.app_metadata === "object" && user.app_metadata !== null
+      ? (user.app_metadata as Record<string, unknown>).role
+      : undefined;
+  const userRole =
+    typeof user?.user_metadata === "object" && user.user_metadata !== null
+      ? (user.user_metadata as Record<string, unknown>).role
+      : undefined;
+
+  return appRole === "coach" || appRole === "admin" || userRole === "coach" || userRole === "admin";
+}
 
 function clearAuthCookies() {
   document.cookie = "sb-access-token=; Path=/; Max-Age=0; SameSite=Lax";
@@ -103,8 +124,11 @@ export function AppNavigation() {
   const pathname = usePathname();
   const router = useRouter();
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [isCoach, setIsCoach] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const routes = sessionEmail ? [...baseRoutes, ...signedInRoutes] : baseRoutes;
+  const routes = sessionEmail
+    ? [...baseRoutes, ...(isCoach ? coachRoutes : []), ...signedInRoutes]
+    : baseRoutes;
 
   useEffect(() => {
     if (!hasSupabaseBrowserEnv()) return;
@@ -112,16 +136,50 @@ export function AppNavigation() {
     const supabase = getSupabaseBrowser();
     let active = true;
 
-    void supabase.auth.getSession().then(({ data }) => {
+    async function syncSessionState() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       if (!active) return;
-      setSessionEmail(data.session?.user?.email ?? null);
-    });
+
+      if (!session) {
+        setSessionEmail(null);
+        setIsCoach(false);
+        return;
+      }
+
+      setSessionEmail(session.user.email ?? null);
+
+      try {
+        const response = await fetch("/api/auth/session", {
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+
+        const payload = (await response.json()) as SessionStateResponse;
+        if (!active) return;
+
+        if (response.ok && payload.ok && payload.authenticated) {
+          setSessionEmail(payload.email ?? session.user.email ?? null);
+          setIsCoach(payload.isCoach === true);
+          return;
+        }
+      } catch {
+        // Fall back to local session metadata when the server session endpoint is unavailable.
+      }
+
+      if (!active) return;
+      setIsCoach(hasCoachMetadata(session.user));
+    }
+
+    void syncSessionState();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!active) return;
-      setSessionEmail(session?.user?.email ?? null);
+    } = supabase.auth.onAuthStateChange((_event) => {
+      void syncSessionState();
     });
 
     return () => {
@@ -134,6 +192,7 @@ export function AppNavigation() {
     if (!hasSupabaseBrowserEnv()) {
       clearAuthCookies();
       setSessionEmail(null);
+      setIsCoach(false);
       router.push("/login");
       router.refresh();
       return;
@@ -145,6 +204,7 @@ export function AppNavigation() {
     } finally {
       clearAuthCookies();
       setSessionEmail(null);
+      setIsCoach(false);
       setIsSigningOut(false);
       router.push("/login");
       router.refresh();
