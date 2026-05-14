@@ -1,5 +1,5 @@
 import { getCoachSupabase } from "@/lib/supabase/coach";
-import { assignJobToClientFromForm, updateJobLane } from "./actions";
+import { assignJobToClientFromForm, createCoachClientOnboarding, updateJobLane } from "./actions";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -208,6 +208,8 @@ type UnassignedJob = {
 type CoachClient = {
   id: string;
   name: string;
+  email: string | null;
+  program_status: string | null;
   auth_user_id: string | null;
 };
 
@@ -341,7 +343,7 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
 
   const { data: clients, error: clientsError } = await supabase
     .from("clients")
-    .select("id, name, auth_user_id")
+    .select("id, name, email, program_status, auth_user_id")
     .order("name", { ascending: true });
 
   const { data: ingestRuns, error: ingestRunsError } = await supabase
@@ -536,6 +538,53 @@ export default async function CoachPage({ searchParams }: CoachPageProps) {
           <strong>Local data warning:</strong> {coachQueryErrorMessage}
         </div>
       ) : null}
+
+      <section style={{ ...cardStyle, marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+          <div>
+            <h2 style={sectionTitleStyle}>Client Onboarding</h2>
+            <p style={mutedTextStyle}>Create the client shell, complete onboarding yourself, then send the client login link when their workspace is ready.</p>
+          </div>
+        </div>
+        <div style={operationsGridStyle}>
+          <div style={utilityPanelStyle}>
+            <p style={sectionEyebrowStyle}>New Client</p>
+            <h3 style={{ margin: "0 0 8px", fontSize: 20 }}>Create coach-led onboarding shell</h3>
+            <p style={{ ...mutedTextStyle, marginBottom: 14 }}>This creates the client auth user up front so you can upload the resume and build the profile before the client ever logs in.</p>
+            <form action={createCoachClientOnboarding} style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+              <input type="text" name="name" placeholder="Client name" required style={inputStyle} />
+              <input type="email" name="email" placeholder="client@example.com" required style={inputStyle} />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <button type="submit" style={primaryButtonStyle}>Create client shell</button>
+              </div>
+            </form>
+          </div>
+
+          <div style={utilityPanelStyle}>
+            <p style={sectionEyebrowStyle}>Client Access</p>
+            <h3 style={{ margin: "0 0 8px", fontSize: 20 }}>Send access after onboarding</h3>
+            <p style={{ ...mutedTextStyle, marginBottom: 14 }}>Once the resume and profile are ready, send the client to the normal client login page so they can see assigned jobs and their prepared profile.</p>
+            <a href="/login" style={{ ...secondaryButtonStyle, textDecoration: "none" }}>Open client login link</a>
+          </div>
+        </div>
+        <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
+          {typedClients.map((client) => (
+            <article key={client.id} style={{ border: "1px solid #e2e8f0", borderRadius: 16, padding: 16, background: "#fff" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ display: "grid", gap: 4 }}>
+                  <strong style={{ fontSize: 16 }}>{client.name}</strong>
+                  <span style={{ ...mutedTextStyle, fontSize: 13 }}>{client.email ?? "No email"}</span>
+                  <span style={{ ...mutedTextStyle, fontSize: 13 }}>Status: {client.program_status ?? "coach_onboarding"}</span>
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <a href={`/coach/clients/${encodeURIComponent(client.id)}`} style={{ ...secondaryButtonStyle, textDecoration: "none" }}>Open onboarding</a>
+                </div>
+              </div>
+            </article>
+          ))}
+          {typedClients.length === 0 ? <p style={mutedTextStyle}>No clients yet.</p> : null}
+        </div>
+      </section>
 
       <section style={{ ...cardStyle, marginBottom: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>

@@ -1,5 +1,6 @@
 "use server";
 
+import crypto from "node:crypto";
 import { getCoachSupabase } from "@/lib/supabase/coach";
 import { getCoachSession } from "@/lib/auth/coach";
 import { revalidatePath } from "next/cache";
@@ -15,12 +16,179 @@ type ExistingAssignmentRow = {
   client_id_legacy: string | null;
 };
 
+type ClientRow = {
+  id: string;
+  email: string | null;
+  auth_user_id: string | null;
+};
+
 async function assertCoachAccess() {
   const { user, isCoach } = await getCoachSession();
 
   if (!user || !isCoach) {
     throw new Error("Unauthorized");
   }
+}
+
+function slugifyClientId(name: string): string {
+  const normalized = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  return normalized || "client";
+}
+
+async function buildUniqueClientId(supabase: ReturnType<typeof getCoachSupabase>, baseName: string) {
+  const baseId = slugifyClientId(baseName);
+  const { data, error } = await (supabase as any)
+    .from("clients")
+    .select("id")
+    .ilike("id", `${baseId}%`)
+    .limit(100);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const existingIds = new Set(((data ?? []) as Array<{ id?: string | null }>).map((row) => (row.id ?? "").trim()));
+  if (!existingIds.has(baseId)) return baseId;
+
+  let suffix = 2;
+  while (existingIds.has(`${baseId}_${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${baseId}_${suffix}`;
+}
+
+async function ensureClientAuthUser(
+  supabase: ReturnType<typeof getCoachSupabase>,
+  email: string,
+  name: string
+) {
+  const admin = supabase?.auth?.admin;
+  if (!admin) {
+    throw new Error("Coach auth admin client unavailable");
+  }
+
+  const { data: usersPage, error: usersError } = await admin.listUsers({ page: 1, perPage: 200 });
+  if (usersError) {
+    throw new Error(usersError.message);
+  }
+
+  const existingUser = (usersPage.users ?? []).find(
+    (user) => (user.email ?? "").trim().toLowerCase() === email.toLowerCase()
+  );
+
+  if (existingUser) {
+    return existingUser.id;
+  }
+
+  const generatedPassword = `${crypto.randomBytes(18).toString("base64url")}A1!`;
+  const { data: createdUser, error: createUserError } = await admin.createUser({
+    email,
+    password: generatedPassword,
+    email_confirm: true,
+    user_metadata: { role: "client", name },
+  });
+
+  if (createUserError || !createdUser.user?.id) {
+    throw new Error(createUserError?.message || "Failed to create client auth user");
+  }
+
+  return createdUser.user.id;
+}
+
+export async function createCoachClientOnboarding(formData: FormData) {
+  await assertCoachAccess();
+
+  const supabase = getCoachSupabase();
+  if (!supabase) {
+    throw new Error("Coach Supabase client unavailable; client creation skipped.");
+  }
+
+  const name = typeof formData.get("name") === "string" ? String(formData.get("name")).trim() : "";
+  const email = typeof formData.get("email") === "string" ? String(formData.get("email")).trim().toLowerCase() : "";
+
+  if (!name || !email) {
+    throw new Error("Client name and email are required");
+  }
+
+  const authUserId = await ensureClientAuthUser(supabase, email, name);
+  const { data: existingClient, error: existingClientError } = await (supabase as any)
+    .from("clients")
+    .select("id, email, auth_user_id")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (existingClientError) {
+    throw new Error(existingClientError.message);
+  }
+
+  let clientId = (existingClient as ClientRow | null)?.id ?? "";
+
+  if (!clientId) {
+    clientId = await buildUniqueClientId(supabase, name);
+    const { error: insertError } = await (supabase as any).from("clients").insert({
+      id: clientId,
+      name,
+      email,
+      auth_user_id: authUserId,
+      program_status: "coach_onboarding",
+    });
+
+    if (insertError) {
+      throw new Error(insertError.message);
+    }
+  } else {
+    const { error: updateError } = await (supabase as any)
+      .from("clients")
+      .update({ name, email, auth_user_id: authUserId, program_status: "coach_onboarding", updated_at: new Date().toISOString() })
+      .eq("id", clientId);
+
+    if (updateError) {
+      throw new Error(updateError.message);
+    }
+  }
+
+  revalidatePath("/coach");
+}
+
+export async function updateClientProgramStatus(clientId: string, programStatus: string) {
+  await assertCoachAccess();
+
+  const supabase = getCoachSupabase();
+  if (!supabase) {
+    throw new Error("Coach Supabase client unavailable; client status update skipped.");
+  }
+
+  const normalizedStatus = programStatus.trim();
+  if (!normalizedStatus) {
+    throw new Error("Program status is required");
+  }
+
+  const { error } = await (supabase as any)
+    .from("clients")
+    .update({ program_status: normalizedStatus, updated_at: new Date().toISOString() })
+    .eq("id", clientId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/coach");
+  revalidatePath(`/coach/clients/${clientId}`);
+}
+
+export async function updateClientProgramStatusFromForm(clientId: string, formData: FormData) {
+  const programStatus = formData.get("programStatus");
+  if (typeof programStatus !== "string" || programStatus.trim().length === 0) {
+    throw new Error("Program status is required");
+  }
+
+  await updateClientProgramStatus(clientId, programStatus);
 }
 
 export async function updateJobLane(jobId: string, lane: string) {

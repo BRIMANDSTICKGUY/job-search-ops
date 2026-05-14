@@ -247,7 +247,19 @@ function renderRoleOptions() {
   ));
 }
 
-export function ClientProfileForm() {
+type ClientProfileFormProps = {
+  profilePath?: string;
+  resumePath?: string;
+  title?: string;
+  description?: string;
+};
+
+export function ClientProfileForm({
+  profilePath = "/api/client/profile",
+  resumePath = "/api/client/profile/resume",
+  title = "Profile",
+  description = "Use your resume to draft role targets, then refine your search profile with structured job categories and clear preferences.",
+}: ClientProfileFormProps = {}) {
   const roleTargetsRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -296,7 +308,7 @@ export function ClientProfileForm() {
           return;
         }
 
-        const res = await fetch("/api/client/profile", {
+        const res = await fetch(profilePath, {
           method: "GET",
           headers: { authorization: `Bearer ${token}` },
           cache: "no-store",
@@ -333,7 +345,7 @@ export function ClientProfileForm() {
         }
 
         try {
-          const resumeRes = await fetch("/api/client/profile/resume", {
+          const resumeRes = await fetch(resumePath, {
             method: "GET",
             headers: { authorization: `Bearer ${token}` },
             cache: "no-store",
@@ -374,7 +386,7 @@ export function ClientProfileForm() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [profilePath, resumePath]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -415,7 +427,7 @@ export function ClientProfileForm() {
       };
 
       const method = hasProfile ? "PATCH" : "POST";
-      const res = await fetch("/api/client/profile", {
+      const res = await fetch(profilePath, {
         method,
         headers: {
           "content-type": "application/json",
@@ -468,7 +480,7 @@ export function ClientProfileForm() {
       const body = new FormData();
       body.append("resume", resumeFile);
 
-      const res = await fetch("/api/client/profile/resume", {
+      const res = await fetch(resumePath, {
         method: "POST",
         headers: {
           authorization: `Bearer ${token}`,
@@ -547,9 +559,9 @@ export function ClientProfileForm() {
   return (
     <section style={{ display: "grid", gap: 18, marginBottom: 24 }}>
       <div>
-        <h2 style={{ margin: "0 0 8px", fontSize: 26, letterSpacing: "-0.03em" }}>Profile</h2>
+        <h2 style={{ margin: "0 0 8px", fontSize: 26, letterSpacing: "-0.03em" }}>{title}</h2>
         <p style={{ margin: 0, color: "#526071", lineHeight: 1.6 }}>
-          Use your resume to draft role targets, then refine your search profile with structured job categories and clear preferences.
+          {description}
         </p>
       </div>
       {latestResumeUpload ? (
