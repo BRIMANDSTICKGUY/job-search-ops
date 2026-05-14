@@ -1,10 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
-
-const RATE_LIMIT_BACKOFF_SECONDS = 180;
-const RETRY_AFTER_STORAGE_KEY = "job-search-ops:magic-link-rate-limit-retry-after";
 
 const shellStyle: React.CSSProperties = {
   minHeight: "100vh",
@@ -49,62 +46,16 @@ const buttonStyle: React.CSSProperties = {
   boxShadow: "0 18px 32px rgba(29, 78, 216, 0.22)",
 };
 
-function setCooldown(seconds: number) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(RETRY_AFTER_STORAGE_KEY, String(Date.now() + seconds * 1000));
-}
-
-function clearCooldown() {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(RETRY_AFTER_STORAGE_KEY);
-}
-
-function getRemainingCooldownSeconds() {
-  if (typeof window === "undefined") return 0;
-
-  const storedValue = window.localStorage.getItem(RETRY_AFTER_STORAGE_KEY);
-  const retryAfter = storedValue ? Number.parseInt(storedValue, 10) : 0;
-  if (!Number.isFinite(retryAfter) || retryAfter <= 0) return 0;
-
-  const remainingSeconds = Math.ceil((retryAfter - Date.now()) / 1000);
-  if (remainingSeconds <= 0) {
-    window.localStorage.removeItem(RETRY_AFTER_STORAGE_KEY);
-    return 0;
-  }
-
-  return remainingSeconds;
-}
-
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [cooldownSeconds, setCooldownSeconds] = useState(0);
-
-  useEffect(() => {
-    setCooldownSeconds(getRemainingCooldownSeconds());
-
-    const intervalId = window.setInterval(() => {
-      setCooldownSeconds(getRemainingCooldownSeconds());
-    }, 1000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setSent(false);
-
-    const remainingCooldown = getRemainingCooldownSeconds();
-    if (remainingCooldown > 0) {
-      setCooldownSeconds(remainingCooldown);
-      setError(`Please wait ${remainingCooldown}s before requesting another magic link`);
-      return;
-    }
 
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
@@ -126,9 +77,7 @@ export default function LoginPage() {
       if (signInError) {
         const normalizedMessage = signInError.message.toLowerCase();
         if (normalizedMessage.includes("rate limit")) {
-          setCooldown(RATE_LIMIT_BACKOFF_SECONDS);
-          setCooldownSeconds(RATE_LIMIT_BACKOFF_SECONDS);
-          setError("Email rate limit reached. Wait a few minutes, then request a new magic link.");
+          setError("Email rate limit reached by the auth provider. Try again shortly.");
           return;
         }
 
@@ -136,8 +85,6 @@ export default function LoginPage() {
         return;
       }
 
-      clearCooldown();
-      setCooldownSeconds(0);
       setSent(true);
     } catch {
       setError("Failed to send magic link");
@@ -173,19 +120,15 @@ export default function LoginPage() {
               style={inputStyle}
             />
           </label>
-          <button type="submit" disabled={submitting || cooldownSeconds > 0} style={{ ...buttonStyle, opacity: submitting || cooldownSeconds > 0 ? 0.7 : 1, cursor: submitting || cooldownSeconds > 0 ? "not-allowed" : "pointer" }}>
-            {submitting
-              ? "Sending..."
-              : cooldownSeconds > 0
-                ? `Try again in ${cooldownSeconds}s`
-                : "Send magic link"}
+          <button type="submit" disabled={submitting} style={{ ...buttonStyle, opacity: submitting ? 0.7 : 1, cursor: submitting ? "not-allowed" : "pointer" }}>
+            {submitting ? "Sending..." : "Send magic link"}
           </button>
         </form>
 
         <div style={{ marginTop: 16, minHeight: 48 }}>
           {sent ? (
             <p style={{ margin: 0, color: "#166534", background: "#dcfce7", border: "1px solid #bbf7d0", borderRadius: 14, padding: "12px 14px", fontSize: 14 }}>
-              Check your email for the sign-in link. If you just requested one, wait for the cooldown before sending another.
+              Check your email for the sign-in link.
             </p>
           ) : null}
           {error ? (
