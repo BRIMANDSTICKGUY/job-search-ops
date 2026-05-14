@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
 
@@ -98,13 +99,13 @@ export default function LoginPage() {
       <section style={cardStyle}>
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: "inline-flex", padding: "7px 12px", borderRadius: 999, background: "#dbeafe", color: "#1d4ed8", fontSize: 12, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-            Secure Login
+            Client Login
           </div>
           <h1 style={{ margin: "16px 0 10px", fontSize: 36, lineHeight: 1.02, letterSpacing: "-0.04em", color: "#0f172a" }}>
-            Sign in to Job Search Ops
+            Sign in with a magic link
           </h1>
           <p style={{ margin: 0, color: "#526071", fontSize: 15, lineHeight: 1.6 }}>
-            Enter your email and we&apos;ll send you a magic link. The sign-in card is centered so the auth flow feels like a proper entry point instead of a utility page.
+            Client accounts use email magic links. Coach accounts should use the dedicated password login.
           </p>
         </div>
 
@@ -136,6 +137,12 @@ export default function LoginPage() {
               {error}
             </p>
           ) : null}
+        </div>
+
+        <div style={{ marginTop: 20, fontSize: 14 }}>
+          <Link href="/coach/login" style={{ color: "#1d4ed8", textDecoration: "none", fontWeight: 700 }}>
+            Coach or admin? Use password login
+          </Link>
         </div>
       </section>
     </main>

@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabase/browser";
-
-const THIRTY_DAYS = 60 * 60 * 24 * 30;
+import { resolveRedirectPath, setAuthCookies } from "@/lib/auth/browser";
 
 const shellStyle: React.CSSProperties = {
   minHeight: "100vh",
@@ -27,49 +26,15 @@ const cardStyle: React.CSSProperties = {
 
 type OtpType = "magiclink" | "recovery" | "invite" | "email" | "email_change";
 
-type SessionStateResponse = {
-  ok?: boolean;
-  authenticated?: boolean;
-  redirectPath?: string;
-};
+function getAuthTargetPath(searchParams: URLSearchParams, hashParams: URLSearchParams) {
+  const searchType = searchParams.get("type");
+  const hashType = hashParams.get("type");
 
-function setAuthCookies(accessToken: string, refreshToken: string) {
-  document.cookie = `sb-access-token=${encodeURIComponent(accessToken)}; Path=/; Max-Age=${THIRTY_DAYS}; SameSite=Lax`;
-  document.cookie = `sb-refresh-token=${encodeURIComponent(refreshToken)}; Path=/; Max-Age=${THIRTY_DAYS}; SameSite=Lax`;
-}
-
-function hasCoachMetadata(user: { app_metadata?: unknown; user_metadata?: unknown } | null | undefined) {
-  const appRole =
-    typeof user?.app_metadata === "object" && user.app_metadata !== null
-      ? (user.app_metadata as Record<string, unknown>).role
-      : undefined;
-  const userRole =
-    typeof user?.user_metadata === "object" && user.user_metadata !== null
-      ? (user.user_metadata as Record<string, unknown>).role
-      : undefined;
-
-  return appRole === "coach" || appRole === "admin" || userRole === "coach" || userRole === "admin";
-}
-
-async function resolveRedirectPath(
-  fallbackUser?: { app_metadata?: unknown; user_metadata?: unknown } | null
-) {
-  try {
-    const response = await fetch("/api/auth/session", {
-      method: "GET",
-      cache: "no-store",
-      credentials: "same-origin",
-    });
-
-    const payload = (await response.json()) as SessionStateResponse;
-    if (response.ok && payload.ok && payload.authenticated && typeof payload.redirectPath === "string") {
-      return payload.redirectPath;
-    }
-  } catch {
-    // Fall back to the client session metadata when the server session endpoint is unavailable.
+  if (searchType === "recovery" || hashType === "recovery") {
+    return "/auth/update-password";
   }
 
-  return hasCoachMetadata(fallbackUser) ? "/coach" : "/client";
+  return null;
 }
 
 export default function AuthCallbackPage() {
@@ -83,13 +48,14 @@ export default function AuthCallbackPage() {
       try {
         const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
         const searchParams = new URLSearchParams(window.location.search);
+        const authTargetPath = getAuthTargetPath(searchParams, hashParams);
 
         const hashAccessToken = hashParams.get("access_token");
         const hashRefreshToken = hashParams.get("refresh_token");
 
         if (hashAccessToken && hashRefreshToken) {
           setAuthCookies(hashAccessToken, hashRefreshToken);
-          router.replace(await resolveRedirectPath());
+          router.replace(authTargetPath ?? (await resolveRedirectPath()));
           return;
         }
 
@@ -106,7 +72,7 @@ export default function AuthCallbackPage() {
           }
 
           setAuthCookies(data.session.access_token, data.session.refresh_token);
-          router.replace(await resolveRedirectPath(data.session.user));
+          router.replace(authTargetPath ?? (await resolveRedirectPath(data.session.user)));
           return;
         }
 
@@ -127,7 +93,7 @@ export default function AuthCallbackPage() {
           }
 
           setAuthCookies(data.session.access_token, data.session.refresh_token);
-          router.replace(await resolveRedirectPath(data.session.user));
+          router.replace(authTargetPath ?? (await resolveRedirectPath(data.session.user)));
           return;
         }
 
@@ -137,7 +103,7 @@ export default function AuthCallbackPage() {
 
         if (session?.access_token && session.refresh_token) {
           setAuthCookies(session.access_token, session.refresh_token);
-          router.replace(await resolveRedirectPath(session.user));
+          router.replace(authTargetPath ?? (await resolveRedirectPath(session.user)));
           return;
         }
 
